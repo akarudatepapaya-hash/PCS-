@@ -1,0 +1,1412 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>PCS Expense System</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+Thai:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+  <div class="app-root">
+
+    <!-- LOGIN VIEW -->
+    <section class="login-screen" id="loginScreen">
+      <div class="login-screen__overlay"></div>
+
+      <div class="login-card">
+        <div class="login-card__brand">
+          <div class="login-card__logo">PCS</div>
+          <div>
+            <h1>PCS ACCOUNTING</h1>
+            <p>Expense Workflow • Cargo + Freight • Role Based • Statement Reconcile</p>
+          </div>
+        </div>
+
+        <div class="login-card__body">
+          <div class="login-card__intro">
+            <h2>เข้าสู่ระบบรายจ่ายต้นทุน</h2>
+            <p>
+              รองรับทั้งระบบเบิกเงินคาร์โก้แบบรายการเดี่ยว และระบบเบิกเงินเฟรทแบบยึด Shipment เป็นหลัก
+              พร้อมแนบเอกสาร อัปสลิป เทียบ Statement และควบคุมสิทธิ์ตาม Role
+            </p>
+          </div>
+
+          <form id="loginForm" class="login-form">
+            <div class="form-grid form-grid--1">
+              <label class="field">
+                <span>ชื่อผู้ใช้</span>
+                <input type="text" id="loginUsername" placeholder="เช่น pond.admin" />
+              </label>
+
+              <label class="field">
+                <span>รหัสผ่าน</span>
+                <input type="password" id="loginPassword" placeholder="กรอกรหัสผ่าน" />
+              </label>
+
+              <label class="field">
+                <span>เข้าสู่ระบบเป็น</span>
+                <select id="loginRole">
+                  <option value="admin">Admin</option>
+                  <option value="accounting">Accounting</option>
+                  <option value="manager">Manager</option>
+                  <option value="staff">Staff</option>
+                  <option value="viewer">Viewer</option>
+                </select>
+              </label>
+            </div>
+
+            <div class="login-actions">
+              <button type="submit" class="btn btn-primary btn-lg">เข้าสู่ระบบ</button>
+            </div>
+          </form>
+
+          <div class="login-note">
+            <div class="login-note__item">
+              <strong>Admin</strong>
+              <span>ตั้งค่าสิทธิ์ / หมวดหมู่ / รายการเบิก / ต้นทุนบริการ / ธนาคาร / ภาษี / ดูทุกหน้า</span>
+            </div>
+            <div class="login-note__item">
+              <strong>Manager</strong>
+              <span>ตรวจรายการ / อนุมัติ / ดูคาร์โก้และเฟรท / ตรวจ shipment / ดู log</span>
+            </div>
+            <div class="login-note__item">
+              <strong>Staff</strong>
+              <span>ตั้งเบิก / สร้าง shipment / เพิ่มรายการใต้ shipment / แนบใบเสร็จ / แนบสลิป</span>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- APP SHELL -->
+    <div class="app-shell is-hidden" id="appShell">
+      <aside class="sidebar" id="sidebar">
+        <div class="sidebar-brand">
+          <div class="brand-logo">PCS</div>
+          <div class="brand-text">
+            <strong>PCS ACCOUNTING</strong>
+            <span>Cargo & Freight Expense System</span>
+          </div>
+        </div>
+
+        <div class="sidebar-user-card">
+          <div class="sidebar-user-card__avatar" id="currentUserAvatar">P</div>
+          <div class="sidebar-user-card__meta">
+            <strong id="currentUserName">Pond Admin</strong>
+            <span id="currentUserRoleText">Admin</span>
+          </div>
+        </div>
+
+        <nav class="sidebar-menu">
+          <button class="menu-item active" data-page="dashboard-page">
+            <span class="menu-icon">▣</span>
+            <span>แดชบอร์ด</span>
+          </button>
+
+          <button class="menu-item" data-page="expense-page">
+            <span class="menu-icon">≣</span>
+            <span>เบิกเงินคาร์โก้</span>
+          </button>
+
+          <button class="menu-item" data-page="freight-page">
+            <span class="menu-icon">⛟</span>
+            <span>เบิกเงินเฟรท</span>
+          </button>
+
+          <button class="menu-item" data-page="statement-page">
+            <span class="menu-icon">⌁</span>
+            <span>เทียบ Statement</span>
+          </button>
+
+          <button class="menu-item" data-page="documents-page">
+            <span class="menu-icon">⎙</span>
+            <span>พิมพ์ชุดเอกสาร</span>
+          </button>
+
+          <button class="menu-item" data-page="settings-page" data-role-only="admin,manager">
+            <span class="menu-icon">⚙</span>
+            <span>ตั้งค่า</span>
+          </button>
+
+          <button class="menu-item" data-page="users-page" data-role-only="admin">
+            <span class="menu-icon">⌘</span>
+            <span>ผู้ใช้งาน / สิทธิ์</span>
+          </button>
+
+          <button class="menu-item" data-page="logs-page" data-role-only="admin,manager">
+            <span class="menu-icon">◷</span>
+            <span>ประวัติการทำรายการ</span>
+          </button>
+
+          <button class="menu-item disabled" type="button">
+            <span class="menu-icon">◌</span>
+            <span>รายรับ (ปิดไว้ก่อน)</span>
+          </button>
+        </nav>
+
+        <div class="sidebar-footer">
+          <button class="btn btn-outline btn-full" id="logoutBtnSide">Logout</button>
+        </div>
+      </aside>
+
+      <main class="main-content">
+        <header class="topbar">
+          <div class="topbar-left">
+            <button class="sidebar-toggle" id="sidebarToggle" type="button">☰</button>
+
+            <div class="page-title-wrap">
+              <h1 class="page-title" id="dynamicPageTitle">ระบบรายจ่ายต้นทุน</h1>
+              <p class="page-subtitle" id="dynamicPageSubtitle">
+                Cargo แบบรายการเดี่ยว • Freight แบบ Shipment • แนบเอกสาร • เทียบ Statement • คุมสิทธิ์ตาม Role
+              </p>
+            </div>
+          </div>
+
+          <div class="topbar-right">
+            <div class="global-search">
+              <input
+                type="text"
+                id="globalSearch"
+                placeholder="ค้นหาเลขที่เบิก / ผู้เบิก / shipment / หมวด / รายการ / ธนาคาร / หมายเหตุ"
+              />
+            </div>
+
+            <div class="topbar-actions-group">
+              <button class="btn btn-secondary" id="openCreateShipmentModal">
+                + สร้าง Shipment
+              </button>
+              <button class="btn btn-primary" id="openCreateRequestModal">
+                + ตั้งเบิกคาร์โก้
+              </button>
+            </div>
+
+            <div class="user-dropdown">
+              <button type="button" class="user-dropdown__toggle" id="userDropdownToggle">
+                <span class="user-dropdown__avatar" id="topbarUserAvatar">P</span>
+                <span class="user-dropdown__name" id="topbarUserName">Pond Admin</span>
+              </button>
+
+              <div class="user-dropdown__menu" id="userDropdownMenu">
+                <button type="button" class="dropdown-action" id="openProfileAction">ข้อมูลผู้ใช้งาน</button>
+                <button type="button" class="dropdown-action" id="logoutBtnTop">Logout</button>
+              </div>
+            </div>
+          </div>
+        </header>
+
+        <!-- DASHBOARD -->
+        <section class="page-section active" id="dashboard-page">
+          <div class="stats-grid">
+            <div class="stat-card">
+              <div class="stat-card-label">ยอดตั้งเบิกรวม</div>
+              <div class="stat-card-value" id="sumRequestAmount">฿0.00</div>
+              <div class="stat-card-note">รวมทั้งคาร์โก้และเฟรท</div>
+            </div>
+
+            <div class="stat-card">
+              <div class="stat-card-label">ยอดอนุมัติ</div>
+              <div class="stat-card-value" id="sumApprovedAmount">฿0.00</div>
+              <div class="stat-card-note">ยอดที่อนุมัติจ่ายจริง</div>
+            </div>
+
+            <div class="stat-card warning">
+              <div class="stat-card-label">รอเอกสาร / เอกสารไม่ครบ</div>
+              <div class="stat-card-value" id="sumPendingDocs">0</div>
+              <div class="stat-card-note">ใบเสร็จ / สลิป / หัก ณ ที่จ่าย / ใบกำกับ</div>
+            </div>
+
+            <div class="stat-card success">
+              <div class="stat-card-label">กระทบยอดแล้ว</div>
+              <div class="stat-card-value" id="sumReconciled">0</div>
+              <div class="stat-card-note">จับคู่ Statement เรียบร้อย</div>
+            </div>
+          </div>
+
+          <div class="dashboard-top-grid">
+            <div class="panel">
+              <div class="panel-header">
+                <div>
+                  <h2>ภาพรวมระบบ</h2>
+                  <p>แยกดูคาร์โก้แบบรายการเดี่ยว และเฟรทแบบ Shipment ได้ในระบบเดียว</p>
+                </div>
+              </div>
+
+              <div class="panel-body">
+                <div class="dashboard-mode-grid">
+                  <div class="mini-summary-card">
+                    <span>จำนวนรายการคาร์โก้</span>
+                    <strong id="dashboardCargoCount">0</strong>
+                  </div>
+                  <div class="mini-summary-card">
+                    <span>จำนวน Shipment เฟรท</span>
+                    <strong id="dashboardFreightShipmentCount">0</strong>
+                  </div>
+                  <div class="mini-summary-card">
+                    <span>จำนวนรายการใต้ Shipment</span>
+                    <strong id="dashboardFreightItemCount">0</strong>
+                  </div>
+                  <div class="mini-summary-card">
+                    <span>ต้นทุนบริการที่เปิดใช้</span>
+                    <strong id="dashboardServiceCostCount">0</strong>
+                  </div>
+                </div>
+
+                <div class="chart-placeholder">
+                  <div class="chart-placeholder__head">
+                    <strong>พื้นที่กราฟเปรียบเทียบ</strong>
+                    <span>JS จะ render สรุปตามหมวด / ต้นทุนบริการ / ผู้เบิก / shipment</span>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <div class="panel">
+              <div class="panel-header">
+                <div>
+                  <h2>รายการที่ต้องติดตาม</h2>
+                  <p>รวมรายการค้างเอกสาร และ shipment ที่ยังมีรายการไม่ครบ</p>
+                </div>
+              </div>
+
+              <div class="table-wrap">
+                <table class="data-table">
+                  <thead>
+                    <tr>
+                      <th>ประเภท</th>
+                      <th>เลขที่</th>
+                      <th>ผู้รับผิดชอบ</th>
+                      <th>รายละเอียด</th>
+                      <th>สถานะ</th>
+                    </tr>
+                  </thead>
+                  <tbody id="dashboardFollowupTableBody"></tbody>
+                </table>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <!-- CARGO EXPENSE PAGE -->
+        <section class="page-section" id="expense-page">
+          <div class="panel">
+            <div class="panel-header">
+              <div>
+                <h2>รายการเบิกเงินคาร์โก้</h2>
+                <p>ระบบเดิมแบบรายการเดี่ยว ใช้สำหรับรายการที่ไม่ต้องผูกกับ shipment</p>
+              </div>
+              <div class="panel-actions">
+                <button class="btn btn-primary" id="openCreateRequestModalFromExpense">+ ตั้งเบิกคาร์โก้</button>
+              </div>
+            </div>
+
+            <div class="panel-body">
+              <div class="filter-grid">
+                <label class="field">
+                  <span>ค้นหา</span>
+                  <input type="text" id="expenseSearchInput" placeholder="ค้นหาเลขที่ / ผู้เบิก / หมวด / รายการ / หมายเหตุ" />
+                </label>
+
+                <label class="field">
+                  <span>หมวดหมู่</span>
+                  <select id="expenseCategoryFilter">
+                    <option value="">ทั้งหมด</option>
+                  </select>
+                </label>
+
+                <label class="field">
+                  <span>รายการเบิก</span>
+                  <select id="expenseItemFilter">
+                    <option value="">ทั้งหมด</option>
+                  </select>
+                </label>
+
+                <label class="field">
+                  <span>สถานะเอกสาร</span>
+                  <select id="expenseDocStatusFilter">
+                    <option value="">ทั้งหมด</option>
+                    <option value="complete">ครบ</option>
+                    <option value="incomplete">ไม่ครบ</option>
+                    <option value="pending">รอเอกสาร</option>
+                  </select>
+                </label>
+
+                <label class="field">
+                  <span>สถานะกระทบยอด</span>
+                  <select id="expenseStatementFilter">
+                    <option value="">ทั้งหมด</option>
+                    <option value="matched">Matched</option>
+                    <option value="unmatched">Unmatched</option>
+                  </select>
+                </label>
+              </div>
+            </div>
+
+            <div class="table-wrap">
+              <table class="data-table">
+                <thead>
+                  <tr>
+                    <th>เลขที่เบิก</th>
+                    <th>วันที่</th>
+                    <th>ผู้เบิก</th>
+                    <th>หมวดหมู่</th>
+                    <th>รายการเบิก</th>
+                    <th>หัวข้อ</th>
+                    <th>ต้นทุนบริการ</th>
+                    <th>QO</th>
+                    <th class="text-right">จำนวนเงิน</th>
+                    <th>เอกสาร</th>
+                    <th>Statement</th>
+                    <th>สถานะ</th>
+                    <th>จัดการ</th>
+                  </tr>
+                </thead>
+                <tbody id="expenseTableBody"></tbody>
+              </table>
+            </div>
+          </div>
+        </section>
+
+        <!-- FREIGHT PAGE -->
+        <section class="page-section" id="freight-page">
+          <div class="page-mode-banner">
+            <div>
+              <h2>ระบบเบิกเงินเฟรท</h2>
+              <p>
+                ยึด Shipment เป็นหลัก สร้าง Shipment ก่อน แล้วค่อยเพิ่มรายการเบิกย่อยภายใน Shipment นั้น
+              </p>
+            </div>
+            <div class="panel-actions">
+              <button class="btn btn-secondary" id="openCreateShipmentModalFromFreight">+ สร้าง Shipment</button>
+            </div>
+          </div>
+
+          <div class="panel">
+            <div class="panel-header">
+              <div>
+                <h2>รายการ Shipment เฟรท</h2>
+                <p>1 Shipment มีหลายรายการเบิกย่อยได้ เช่น ค่าขนส่ง ค่าท่า ค่าดำเนินการ ค่าเอกสาร</p>
+              </div>
+            </div>
+
+            <div class="panel-body">
+              <div class="filter-grid">
+                <label class="field">
+                  <span>ค้นหา Shipment</span>
+                  <input type="text" id="freightSearchInput" placeholder="ค้นหา shipment no / customer / route / note" />
+                </label>
+
+                <label class="field">
+                  <span>ประเภทขนส่ง</span>
+                  <select id="freightTransportFilter">
+                    <option value="">ทั้งหมด</option>
+                    <option value="sea">เรือ</option>
+                    <option value="truck">รถ</option>
+                    <option value="air">แอร์</option>
+                  </select>
+                </label>
+
+                <label class="field">
+                  <span>สถานะ Shipment</span>
+                  <select id="freightStatusFilter">
+                    <option value="">ทั้งหมด</option>
+                    <option value="draft">Draft</option>
+                    <option value="active">Active</option>
+                    <option value="closed">Closed</option>
+                  </select>
+                </label>
+
+                <label class="field">
+                  <span>สถานะเอกสารรวม</span>
+                  <select id="freightDocFilter">
+                    <option value="">ทั้งหมด</option>
+                    <option value="complete">ครบ</option>
+                    <option value="incomplete">ไม่ครบ</option>
+                  </select>
+                </label>
+              </div>
+            </div>
+
+            <div class="table-wrap">
+              <table class="data-table">
+                <thead>
+                  <tr>
+                    <th>Shipment No.</th>
+                    <th>วันที่</th>
+                    <th>ลูกค้า / ผู้ดูแล</th>
+                    <th>ประเภทขนส่ง</th>
+                    <th>Term</th>
+                    <th>ต้นทาง - ปลายทาง</th>
+                    <th>จำนวนรายการย่อย</th>
+                    <th class="text-right">ยอดรวม</th>
+                    <th>เอกสาร</th>
+                    <th>สถานะ</th>
+                    <th>จัดการ</th>
+                  </tr>
+                </thead>
+                <tbody id="freightShipmentTableBody"></tbody>
+              </table>
+            </div>
+          </div>
+
+          <div class="panel">
+            <div class="panel-header">
+              <div>
+                <h2>รายการเบิกภายใต้ Shipment</h2>
+                <p>เมื่อกดเลือก Shipment ให้แสดงรายการย่อยด้านล่างนี้</p>
+              </div>
+              <div class="panel-actions">
+                <button class="btn btn-primary" id="openCreateFreightItemModal" disabled>+ เพิ่มรายการใต้ Shipment</button>
+              </div>
+            </div>
+
+            <div class="shipment-selected-bar" id="selectedShipmentSummary">
+              <strong>ยังไม่ได้เลือก Shipment</strong>
+              <span>กรุณาเลือก Shipment จากตารางด้านบนก่อนเพิ่มรายการย่อย</span>
+            </div>
+
+            <div class="table-wrap">
+              <table class="data-table">
+                <thead>
+                  <tr>
+                    <th>เลขที่รายการ</th>
+                    <th>วันที่</th>
+                    <th>หมวดหมู่</th>
+                    <th>รายการเบิก</th>
+                    <th>หัวข้อ</th>
+                    <th>ต้นทุนบริการ</th>
+                    <th class="text-right">จำนวนเงิน</th>
+                    <th>เอกสาร</th>
+                    <th>Statement</th>
+                    <th>สถานะ</th>
+                    <th>จัดการ</th>
+                  </tr>
+                </thead>
+                <tbody id="freightItemTableBody"></tbody>
+              </table>
+            </div>
+          </div>
+        </section>
+
+        <!-- STATEMENT PAGE -->
+        <section class="page-section" id="statement-page">
+          <div class="panel">
+            <div class="panel-header">
+              <div>
+                <h2>เทียบ Statement</h2>
+                <p>อัปโหลด CSV จาก KBIZ → ระบบ parse อัตโนมัติ → Auto-match กับรายการเบิก</p>
+              </div>
+              <div class="panel-actions">
+                <button class="btn btn-primary" id="kbizUploadBtn">อัปโหลด KBIZ CSV</button>
+                <input type="file" id="kbizFileInput" accept=".csv" style="display:none" />
+              </div>
+            </div>
+
+            <div class="stmt-summary-bar" id="statementSummaryBar"></div>
+
+            <div class="table-wrap">
+              <table class="data-table">
+                <thead>
+                  <tr>
+                    <th>วันที่ / เวลา</th>
+                    <th>ประเภทรายการ</th>
+                    <th>รายละเอียด</th>
+                    <th class="text-right">ถอนเงิน (ออก)</th>
+                    <th class="text-right">ฝากเงิน (เข้า)</th>
+                    <th>ทิศทาง</th>
+                    <th>จับคู่กับ</th>
+                    <th>ความมั่นใจ</th>
+                  </tr>
+                </thead>
+                <tbody id="statementTableBody"></tbody>
+              </table>
+            </div>
+          </div>
+        </section>
+
+        <!-- DOCUMENTS PAGE -->
+        <section class="page-section" id="documents-page">
+          <div class="panel">
+            <div class="panel-header">
+              <div>
+                <h2>พิมพ์ชุดเอกสาร</h2>
+                <p>ดูเอกสารแนบของทั้งคาร์โก้และเฟรทก่อนพิมพ์ชุดงาน</p>
+              </div>
+            </div>
+
+            <div class="table-wrap">
+              <table class="data-table">
+                <thead>
+                  <tr>
+                    <th>ประเภท</th>
+                    <th>เลขที่อ้างอิง</th>
+                    <th>ผู้เบิก / Shipment</th>
+                    <th>เอกสารที่ต้องมี</th>
+                    <th>เอกสารที่แนบแล้ว</th>
+                    <th>สถานะ</th>
+                    <th>พิมพ์</th>
+                  </tr>
+                </thead>
+                <tbody id="documentsTableBody"></tbody>
+              </table>
+            </div>
+          </div>
+        </section>
+
+        <!-- SETTINGS PAGE -->
+        <section class="page-section" id="settings-page">
+          <div class="settings-grid">
+            <div class="panel">
+              <div class="panel-header">
+                <div>
+                  <h2>Role และสิทธิ์</h2>
+                  <p>กำหนดสิทธิ์เข้าถึงเมนูและการทำรายการ</p>
+                </div>
+              </div>
+
+              <div class="table-wrap">
+                <table class="data-table">
+                  <thead>
+                    <tr>
+                      <th>Role</th>
+                      <th>แดชบอร์ด</th>
+                      <th>คาร์โก้</th>
+                      <th>เฟรท</th>
+                      <th>Statement</th>
+                      <th>เอกสาร</th>
+                      <th>ตั้งค่า</th>
+                      <th>ผู้ใช้งาน</th>
+                      <th>Log</th>
+                      <th>จัดการ</th>
+                    </tr>
+                  </thead>
+                  <tbody id="roleTableBody"></tbody>
+                </table>
+              </div>
+            </div>
+
+            <div class="panel">
+              <div class="panel-header">
+                <div>
+                  <h2>หมวดหมู่ / หัวข้อ / รายการเบิก</h2>
+                  <p>Master data ของ dropdown สำหรับทั้งคาร์โก้และเฟรท</p>
+                </div>
+                <div class="panel-actions">
+                  <button class="btn btn-primary" id="openExpenseMasterModal">+ เพิ่มรายการตั้งค่า</button>
+                </div>
+              </div>
+
+              <div class="table-wrap">
+                <table class="data-table">
+                  <thead>
+                    <tr>
+                      <th>หมวดหมู่</th>
+                      <th>รายการเบิก</th>
+                      <th>หัวข้อ</th>
+                      <th>ต้นทุนบริการ</th>
+                      <th>ใบเสร็จ</th>
+                      <th>ใบกำกับ</th>
+                      <th>หัก ณ ที่จ่าย</th>
+                      <th>สลิป</th>
+                      <th>คำแนะนำ</th>
+                      <th>จัดการ</th>
+                    </tr>
+                  </thead>
+                  <tbody id="expenseMasterTableBody"></tbody>
+                </table>
+              </div>
+            </div>
+
+            <div class="panel">
+              <div class="panel-header">
+                <div>
+                  <h2>หมวดหมู่ต้นทุนบริการ</h2>
+                  <p>ใช้ผูกกับรายการเบิก เพื่อแยกต้นทุนบริการให้ชัดในคาร์โก้และเฟรท</p>
+                </div>
+                <div class="panel-actions">
+                  <button class="btn btn-primary" id="openServiceCostModal">+ เพิ่มหมวดต้นทุนบริการ</button>
+                </div>
+              </div>
+
+              <div class="table-wrap">
+                <table class="data-table">
+                  <thead>
+                    <tr>
+                      <th>รหัส</th>
+                      <th>ชื่อต้นทุนบริการ</th>
+                      <th>คำอธิบาย</th>
+                      <th>เปิดใช้งาน</th>
+                      <th>จัดการ</th>
+                    </tr>
+                  </thead>
+                  <tbody id="serviceCostTableBody"></tbody>
+                </table>
+              </div>
+            </div>
+
+            <div class="panel">
+              <div class="panel-header">
+                <div>
+                  <h2>ธนาคาร</h2>
+                  <p>บัญชีที่ใช้รับเงิน / เทียบ Statement / อ้างอิงการโอน</p>
+                </div>
+                <div class="panel-actions">
+                  <button class="btn btn-primary" id="openBankModal">+ เพิ่มบัญชีธนาคาร</button>
+                </div>
+              </div>
+
+              <div class="table-wrap">
+                <table class="data-table">
+                  <thead>
+                    <tr>
+                      <th>ธนาคาร</th>
+                      <th>เลขบัญชี</th>
+                      <th>ชื่อบัญชี</th>
+                      <th>ประเภท</th>
+                      <th>ใช้เทียบ Statement</th>
+                      <th>จัดการ</th>
+                    </tr>
+                  </thead>
+                  <tbody id="bankTableBody"></tbody>
+                </table>
+              </div>
+            </div>
+
+            <div class="panel">
+              <div class="panel-header">
+                <div>
+                  <h2>กฎภาษี / เอกสาร</h2>
+                  <p>ตั้งค่าหัก ณ ที่จ่าย และคำแนะนำเอกสารต่อรายการ</p>
+                </div>
+                <div class="panel-actions">
+                  <button class="btn btn-primary" id="openTaxRuleModal">+ เพิ่มกฎภาษี</button>
+                </div>
+              </div>
+
+              <div class="table-wrap">
+                <table class="data-table">
+                  <thead>
+                    <tr>
+                      <th>อ้างอิงรายการ</th>
+                      <th>% หัก ณ ที่จ่าย</th>
+                      <th>ใบเสร็จ</th>
+                      <th>สลิป</th>
+                      <th>หัก ณ ที่จ่าย</th>
+                      <th>คำแนะนำ</th>
+                      <th>จัดการ</th>
+                    </tr>
+                  </thead>
+                  <tbody id="taxRuleTableBody"></tbody>
+                </table>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <!-- USERS PAGE -->
+        <section class="page-section" id="users-page">
+          <div class="panel">
+            <div class="panel-header">
+              <div>
+                <h2>ผู้ใช้งาน</h2>
+                <p>จัดการผู้ใช้งานและกำหนด role</p>
+              </div>
+              <div class="panel-actions">
+                <button class="btn btn-primary" id="openUserModal">+ เพิ่มผู้ใช้งาน</button>
+              </div>
+            </div>
+
+            <div class="table-wrap">
+              <table class="data-table">
+                <thead>
+                  <tr>
+                    <th>ชื่อ</th>
+                    <th>Username</th>
+                    <th>Role</th>
+                    <th>แผนก</th>
+                    <th>สถานะ</th>
+                    <th>เข้าใช้ล่าสุด</th>
+                    <th>จัดการ</th>
+                  </tr>
+                </thead>
+                <tbody id="userTableBody"></tbody>
+              </table>
+            </div>
+          </div>
+        </section>
+
+        <!-- LOGS PAGE -->
+        <section class="page-section" id="logs-page">
+          <div class="panel">
+            <div class="panel-header">
+              <div>
+                <h2>ประวัติการทำรายการ</h2>
+                <p>รวม log การเข้าใช้ การสร้างรายการ แก้ไข แนบเอกสาร อนุมัติ และกระทบยอด</p>
+              </div>
+            </div>
+
+            <div class="table-wrap">
+              <table class="data-table">
+                <thead>
+                  <tr>
+                    <th>วันที่เวลา</th>
+                    <th>ผู้ใช้งาน</th>
+                    <th>Role</th>
+                    <th>Action</th>
+                    <th>เลขอ้างอิง</th>
+                    <th>รายละเอียด</th>
+                  </tr>
+                </thead>
+                <tbody id="logTableBody"></tbody>
+              </table>
+            </div>
+          </div>
+        </section>
+      </main>
+    </div>
+
+    <!-- =========================
+         MODALS
+    ========================== -->
+
+    <!-- CREATE CARGO REQUEST MODAL -->
+    <div class="modal" id="createRequestModal">
+      <div class="modal-backdrop" data-close-modal="createRequestModal"></div>
+      <div class="modal-dialog modal-lg">
+        <div class="modal-header">
+          <div>
+            <h3>ตั้งเบิกคาร์โก้</h3>
+            <p>ใช้สำหรับรายการเดี่ยวที่ไม่ต้องผูก Shipment</p>
+          </div>
+          <button class="modal-close" data-close-modal="createRequestModal">×</button>
+        </div>
+
+        <form id="createRequestForm" class="modal-body">
+          <input type="hidden" id="requestMode" value="cargo" />
+
+          <div class="required-fields-banner">
+            <strong>⚠️ ต้องกรอกก่อน Submit:</strong> QO Number + แนบสลิป (บังคับทุกรายการ)
+          </div>
+
+          <div class="form-grid form-grid--2">
+            <label class="field">
+              <span>วันที่</span>
+              <input type="date" id="requestDate" />
+            </label>
+
+            <label class="field">
+              <span>ผู้เบิก</span>
+              <input type="text" id="requestRequester" placeholder="ชื่อผู้เบิก" />
+            </label>
+
+            <label class="field">
+              <span>เลข QO (Quotation จาก PEAK) <span class="required-star">*</span></span>
+              <input type="text" id="requestQoNumber" placeholder="เช่น QO-2026-0001" />
+            </label>
+
+            <label class="field">
+              <span>Term</span>
+              <select id="requestTerm">
+                <option value="">เลือก Term</option>
+                <option value="CIF">CIF</option>
+                <option value="FOB">FOB</option>
+              </select>
+            </label>
+
+            <label class="field">
+              <span>ประเภทขนส่ง</span>
+              <select id="requestTransportType">
+                <option value="">เลือกประเภทขนส่ง</option>
+                <option value="sea">เรือ</option>
+                <option value="truck">รถ</option>
+                <option value="air">แอร์</option>
+              </select>
+            </label>
+
+            <label class="field">
+              <span>หมวดหมู่</span>
+              <select id="requestCategory">
+                <option value="">เลือกหมวดหมู่</option>
+              </select>
+            </label>
+
+            <label class="field">
+              <span>รายการเบิก</span>
+              <select id="requestItem">
+                <option value="">เลือกรายการเบิก</option>
+              </select>
+            </label>
+
+            <label class="field">
+              <span>หัวข้อ</span>
+              <input type="text" id="requestTopic" placeholder="ระบบดึงให้อัตโนมัติ" readonly />
+            </label>
+
+            <label class="field">
+              <span>หมวดต้นทุนบริการ</span>
+              <select id="requestServiceCostCategory">
+                <option value="">เลือกต้นทุนบริการ</option>
+              </select>
+            </label>
+
+            <label class="field">
+              <span>จำนวนเงินที่ขอเบิก</span>
+              <input type="number" id="requestAmountRequested" placeholder="0.00" min="0" step="0.01" />
+            </label>
+
+            <label class="field">
+              <span>ธนาคาร</span>
+              <select id="requestBank">
+                <option value="">เลือกธนาคาร</option>
+              </select>
+            </label>
+
+            <label class="field">
+              <span>ชื่อบัญชีรับเงิน</span>
+              <input type="text" id="requestAccountName" placeholder="ชื่อบัญชี" />
+            </label>
+
+            <label class="field">
+              <span>เลขบัญชีรับเงิน</span>
+              <input type="text" id="requestAccountNo" placeholder="เลขบัญชี" />
+            </label>
+          </div>
+
+          <div class="slip-upload-box">
+            <strong>📎 แนบสลิป <span class="required-star">*</span></strong>
+            <p>บังคับแนบสลิปการโอนก่อน submit ทุกครั้ง</p>
+            <div class="slip-upload-row">
+              <label class="btn btn-secondary slip-upload-label" for="requestSlipFile">เลือกไฟล์สลิป</label>
+              <input type="file" id="requestSlipFile" accept="image/*,application/pdf" style="display:none" />
+              <span id="requestSlipLabel" class="slip-filename">ยังไม่ได้แนบสลิป</span>
+            </div>
+          </div>
+
+          <label class="field">
+            <span>หมายเหตุ</span>
+            <textarea id="requestNote" rows="4" placeholder="รายละเอียดเพิ่มเติม"></textarea>
+          </label>
+
+          <div class="guide-box" id="requestGuideBox">
+            <strong>คำแนะนำเอกสาร</strong>
+            <p id="requestGuideText">เลือกรายการเบิกก่อน ระบบจะแสดงคำแนะนำเอกสารอัตโนมัติ</p>
+          </div>
+
+          <div class="modal-footer">
+            <button type="button" class="btn btn-outline" data-close-modal="createRequestModal">ยกเลิก</button>
+            <button type="submit" class="btn btn-primary">บันทึกรายการคาร์โก้</button>
+          </div>
+        </form>
+      </div>
+    </div>
+
+    <!-- CREATE SHIPMENT MODAL -->
+    <div class="modal" id="createShipmentModal">
+      <div class="modal-backdrop" data-close-modal="createShipmentModal"></div>
+      <div class="modal-dialog modal-lg">
+        <div class="modal-header">
+          <div>
+            <h3>สร้าง Shipment เฟรท</h3>
+            <p>สร้างหัว Shipment ก่อน แล้วค่อยเพิ่มรายการเบิกภายใต้ Shipment</p>
+          </div>
+          <button class="modal-close" data-close-modal="createShipmentModal">×</button>
+        </div>
+
+        <form id="createShipmentForm" class="modal-body">
+          <div class="form-grid form-grid--2">
+            <label class="field">
+              <span>วันที่ Shipment</span>
+              <input type="date" id="shipmentDate" />
+            </label>
+
+            <label class="field">
+              <span>Shipment No.</span>
+              <input type="text" id="shipmentNo" placeholder="เช่น SHP-2026-0001" />
+            </label>
+
+            <label class="field">
+              <span>ลูกค้า / ผู้รับผิดชอบ</span>
+              <input type="text" id="shipmentCustomerName" placeholder="ชื่อลูกค้า หรือผู้ดูแล shipment" />
+            </label>
+
+            <label class="field">
+              <span>ประเภทขนส่ง</span>
+              <select id="shipmentTransportType">
+                <option value="">เลือกประเภทขนส่ง</option>
+                <option value="sea">เรือ</option>
+                <option value="truck">รถ</option>
+                <option value="air">แอร์</option>
+              </select>
+            </label>
+
+            <label class="field">
+              <span>ต้นทาง</span>
+              <input type="text" id="shipmentOrigin" placeholder="เช่น Guangzhou" />
+            </label>
+
+            <label class="field">
+              <span>ปลายทาง</span>
+              <input type="text" id="shipmentDestination" placeholder="เช่น Bangkok" />
+            </label>
+
+            <label class="field">
+              <span>Term</span>
+              <select id="shipmentTerm">
+                <option value="">เลือก Term</option>
+                <option value="CIF">CIF</option>
+                <option value="FOB">FOB</option>
+              </select>
+            </label>
+
+            <label class="field">
+              <span>สถานะ Shipment</span>
+              <select id="shipmentStatus">
+                <option value="draft">Draft</option>
+                <option value="active">Active</option>
+                <option value="closed">Closed</option>
+              </select>
+            </label>
+
+            <label class="field">
+              <span>ผู้สร้าง</span>
+              <input type="text" id="shipmentOwner" placeholder="ชื่อผู้สร้าง shipment" />
+            </label>
+          </div>
+
+          <label class="field">
+            <span>หมายเหตุ Shipment</span>
+            <textarea id="shipmentNote" rows="4" placeholder="รายละเอียด shipment / route / customer note"></textarea>
+          </label>
+
+          <div class="modal-footer">
+            <button type="button" class="btn btn-outline" data-close-modal="createShipmentModal">ยกเลิก</button>
+            <button type="submit" class="btn btn-primary">บันทึก Shipment</button>
+          </div>
+        </form>
+      </div>
+    </div>
+
+    <!-- CREATE FREIGHT ITEM MODAL -->
+    <div class="modal" id="createFreightItemModal">
+      <div class="modal-backdrop" data-close-modal="createFreightItemModal"></div>
+      <div class="modal-dialog modal-lg">
+        <div class="modal-header">
+          <div>
+            <h3>เพิ่มรายการเบิกใต้ Shipment</h3>
+            <p>รายการนี้จะถูกผูกกับ Shipment ที่เลือกอยู่เท่านั้น</p>
+          </div>
+          <button class="modal-close" data-close-modal="createFreightItemModal">×</button>
+        </div>
+
+        <form id="createFreightItemForm" class="modal-body">
+          <input type="hidden" id="freightItemShipmentId" />
+
+          <div class="selected-ref-box">
+            <strong>Shipment ที่เลือก:</strong>
+            <span id="freightItemSelectedShipmentText">ยังไม่ได้เลือก Shipment</span>
+          </div>
+
+          <div class="required-fields-banner">
+            <strong>⚠️ ต้องกรอกก่อน Submit:</strong> QO Number + แนบสลิป (บังคับทุกรายการ)
+          </div>
+
+          <div class="form-grid form-grid--2">
+            <label class="field">
+              <span>วันที่</span>
+              <input type="date" id="freightItemDate" />
+            </label>
+
+            <label class="field">
+              <span>ผู้เบิก</span>
+              <input type="text" id="freightItemRequester" placeholder="ชื่อผู้เบิก" />
+            </label>
+
+            <label class="field">
+              <span>เลข QO (Quotation จาก PEAK) <span class="required-star">*</span></span>
+              <input type="text" id="freightItemQoNumber" placeholder="เช่น QO-2026-0001" />
+            </label>
+
+            <label class="field">
+              <span>Term (ดึงจาก Shipment)</span>
+              <select id="freightItemTerm">
+                <option value="">เลือก Term</option>
+                <option value="CIF">CIF</option>
+                <option value="FOB">FOB</option>
+              </select>
+            </label>
+
+            <label class="field">
+              <span>หมวดหมู่</span>
+              <select id="freightItemCategory">
+                <option value="">เลือกหมวดหมู่</option>
+              </select>
+            </label>
+
+            <label class="field">
+              <span>รายการเบิก</span>
+              <select id="freightItemItem">
+                <option value="">เลือกรายการเบิก</option>
+              </select>
+            </label>
+
+            <label class="field">
+              <span>หัวข้อ</span>
+              <input type="text" id="freightItemTopic" placeholder="ระบบดึงให้อัตโนมัติ" readonly />
+            </label>
+
+            <label class="field">
+              <span>หมวดต้นทุนบริการ</span>
+              <select id="freightItemServiceCostCategory">
+                <option value="">เลือกต้นทุนบริการ</option>
+              </select>
+            </label>
+
+            <label class="field">
+              <span>จำนวนเงินที่ขอเบิก</span>
+              <input type="number" id="freightItemAmountRequested" placeholder="0.00" min="0" step="0.01" />
+            </label>
+
+            <label class="field">
+              <span>ธนาคาร</span>
+              <select id="freightItemBank">
+                <option value="">เลือกธนาคาร</option>
+              </select>
+            </label>
+
+            <label class="field">
+              <span>ชื่อบัญชีรับเงิน</span>
+              <input type="text" id="freightItemAccountName" placeholder="ชื่อบัญชี" />
+            </label>
+
+            <label class="field">
+              <span>เลขบัญชีรับเงิน</span>
+              <input type="text" id="freightItemAccountNo" placeholder="เลขบัญชี" />
+            </label>
+          </div>
+
+          <div class="slip-upload-box">
+            <strong>📎 แนบสลิป <span class="required-star">*</span></strong>
+            <p>บังคับแนบสลิปการโอนก่อน submit ทุกครั้ง</p>
+            <div class="slip-upload-row">
+              <label class="btn btn-secondary slip-upload-label" for="freightItemSlipFile">เลือกไฟล์สลิป</label>
+              <input type="file" id="freightItemSlipFile" accept="image/*,application/pdf" style="display:none" />
+              <span id="freightItemSlipLabel" class="slip-filename">ยังไม่ได้แนบสลิป</span>
+            </div>
+          </div>
+
+          <label class="field">
+            <span>หมายเหตุ</span>
+            <textarea id="freightItemNote" rows="4" placeholder="รายละเอียดรายการย่อยของ shipment"></textarea>
+          </label>
+
+          <div class="guide-box" id="freightItemGuideBox">
+            <strong>คำแนะนำเอกสาร</strong>
+            <p id="freightItemGuideText">เลือกรายการเบิกก่อน ระบบจะแสดงคำแนะนำเอกสารอัตโนมัติ</p>
+          </div>
+
+          <div class="modal-footer">
+            <button type="button" class="btn btn-outline" data-close-modal="createFreightItemModal">ยกเลิก</button>
+            <button type="submit" class="btn btn-primary">บันทึกรายการใต้ Shipment</button>
+          </div>
+        </form>
+      </div>
+    </div>
+
+    <!-- SERVICE COST MODAL -->
+    <div class="modal" id="serviceCostModal">
+      <div class="modal-backdrop" data-close-modal="serviceCostModal"></div>
+      <div class="modal-dialog">
+        <div class="modal-header">
+          <div>
+            <h3>เพิ่มหมวดต้นทุนบริการ</h3>
+            <p>ใช้เป็น master data สำหรับผูกรายการเบิก</p>
+          </div>
+          <button class="modal-close" data-close-modal="serviceCostModal">×</button>
+        </div>
+
+        <form id="serviceCostForm" class="modal-body">
+          <label class="field">
+            <span>รหัส</span>
+            <input type="text" id="serviceCostCode" placeholder="เช่น SC-001" />
+          </label>
+
+          <label class="field">
+            <span>ชื่อต้นทุนบริการ</span>
+            <input type="text" id="serviceCostName" placeholder="เช่น ต้นทุนค่าท่า / ต้นทุนค่าขนส่ง / ต้นทุนค่าเคลียร์" />
+          </label>
+
+          <label class="field">
+            <span>คำอธิบาย</span>
+            <textarea id="serviceCostDescription" rows="4" placeholder="คำอธิบายเพิ่มเติม"></textarea>
+          </label>
+
+          <label class="field field-checkbox">
+            <input type="checkbox" id="serviceCostIsActive" checked />
+            <span>เปิดใช้งาน</span>
+          </label>
+
+          <div class="modal-footer">
+            <button type="button" class="btn btn-outline" data-close-modal="serviceCostModal">ยกเลิก</button>
+            <button type="submit" class="btn btn-primary">บันทึกต้นทุนบริการ</button>
+          </div>
+        </form>
+      </div>
+    </div>
+
+    <!-- EXPENSE MASTER MODAL -->
+    <div class="modal" id="expenseMasterModal">
+      <div class="modal-backdrop" data-close-modal="expenseMasterModal"></div>
+      <div class="modal-dialog modal-lg">
+        <div class="modal-header">
+          <div>
+            <h3>เพิ่มรายการตั้งค่า</h3>
+            <p>กำหนดหมวดหมู่ > รายการเบิก > หัวข้อ > ต้นทุนบริการ > กฎเอกสาร</p>
+          </div>
+          <button class="modal-close" data-close-modal="expenseMasterModal">×</button>
+        </div>
+
+        <form id="expenseMasterForm" class="modal-body">
+          <div class="form-grid form-grid--2">
+            <label class="field">
+              <span>หมวดหมู่</span>
+              <input type="text" id="masterCategory" placeholder="เช่น เบิกเงินทำงาน" />
+            </label>
+
+            <label class="field">
+              <span>รายการเบิก</span>
+              <input type="text" id="masterItem" placeholder="เช่น ค่าขนส่งจีน-ไทย" />
+            </label>
+
+            <label class="field">
+              <span>หัวข้อ</span>
+              <input type="text" id="masterTopic" placeholder="เช่น ต้นทุนค่าขนส่งจีน-ไทย" />
+            </label>
+
+            <label class="field">
+              <span>หมวดต้นทุนบริการ</span>
+              <select id="masterServiceCostCategory">
+                <option value="">เลือกต้นทุนบริการ</option>
+              </select>
+            </label>
+          </div>
+
+          <div class="form-grid form-grid--4">
+            <label class="field field-checkbox">
+              <input type="checkbox" id="masterNeedReceipt" />
+              <span>ต้องมีใบเสร็จ</span>
+            </label>
+
+            <label class="field field-checkbox">
+              <input type="checkbox" id="masterNeedInvoice" />
+              <span>ต้องมีใบกำกับ</span>
+            </label>
+
+            <label class="field field-checkbox">
+              <input type="checkbox" id="masterNeedWithholding" />
+              <span>ต้องมีหัก ณ ที่จ่าย</span>
+            </label>
+
+            <label class="field field-checkbox">
+              <input type="checkbox" id="masterNeedSlip" />
+              <span>ต้องมีสลิป</span>
+            </label>
+          </div>
+
+          <label class="field">
+            <span>% หัก ณ ที่จ่าย</span>
+            <input type="number" id="masterWithholdingPercent" placeholder="0" min="0" max="100" step="0.01" />
+          </label>
+
+          <label class="field">
+            <span>คำแนะนำ</span>
+            <textarea id="masterGuide" rows="4" placeholder="เช่น รายการนี้ต้องแนบใบเสร็จและสลิปทุกครั้ง"></textarea>
+          </label>
+
+          <div class="modal-footer">
+            <button type="button" class="btn btn-outline" data-close-modal="expenseMasterModal">ยกเลิก</button>
+            <button type="submit" class="btn btn-primary">บันทึกรายการตั้งค่า</button>
+          </div>
+        </form>
+      </div>
+    </div>
+
+    <!-- BANK MODAL -->
+    <div class="modal" id="bankModal">
+      <div class="modal-backdrop" data-close-modal="bankModal"></div>
+      <div class="modal-dialog">
+        <div class="modal-header">
+          <div>
+            <h3>เพิ่มบัญชีธนาคาร</h3>
+            <p>ใช้ในฟอร์มเบิกและเทียบ Statement</p>
+          </div>
+          <button class="modal-close" data-close-modal="bankModal">×</button>
+        </div>
+
+        <form id="bankForm" class="modal-body">
+          <label class="field">
+            <span>ธนาคาร</span>
+            <input type="text" id="bankName" placeholder="เช่น กสิกรไทย" />
+          </label>
+
+          <label class="field">
+            <span>เลขบัญชี</span>
+            <input type="text" id="bankAccountNo" placeholder="เลขบัญชี" />
+          </label>
+
+          <label class="field">
+            <span>ชื่อบัญชี</span>
+            <input type="text" id="bankAccountName" placeholder="ชื่อบัญชี" />
+          </label>
+
+          <label class="field">
+            <span>ประเภทบัญชี</span>
+            <select id="bankAccountType">
+              <option value="saving">ออมทรัพย์</option>
+              <option value="current">กระแสรายวัน</option>
+            </select>
+          </label>
+
+          <label class="field field-checkbox">
+            <input type="checkbox" id="bankUseForStatement" checked />
+            <span>ใช้เทียบ Statement</span>
+          </label>
+
+          <div class="modal-footer">
+            <button type="button" class="btn btn-outline" data-close-modal="bankModal">ยกเลิก</button>
+            <button type="submit" class="btn btn-primary">บันทึกธนาคาร</button>
+          </div>
+        </form>
+      </div>
+    </div>
+
+    <!-- TAX RULE MODAL -->
+    <div class="modal" id="taxRuleModal">
+      <div class="modal-backdrop" data-close-modal="taxRuleModal"></div>
+      <div class="modal-dialog">
+        <div class="modal-header">
+          <div>
+            <h3>เพิ่มกฎภาษี</h3>
+            <p>ใช้เป็นกฎประกอบรายการเบิก</p>
+          </div>
+          <button class="modal-close" data-close-modal="taxRuleModal">×</button>
+        </div>
+
+        <form id="taxRuleForm" class="modal-body">
+          <label class="field">
+            <span>อ้างอิงรายการ</span>
+            <input type="text" id="taxRuleItemRef" placeholder="เช่น ค่าแม่บ้าน" />
+          </label>
+
+          <label class="field">
+            <span>% หัก ณ ที่จ่าย</span>
+            <input type="number" id="taxRulePercent" placeholder="0" min="0" max="100" step="0.01" />
+          </label>
+
+          <div class="form-grid form-grid--3">
+            <label class="field field-checkbox">
+              <input type="checkbox" id="taxRuleNeedReceipt" />
+              <span>ต้องมีใบเสร็จ</span>
+            </label>
+
+            <label class="field field-checkbox">
+              <input type="checkbox" id="taxRuleNeedSlip" />
+              <span>ต้องมีสลิป</span>
+            </label>
+
+            <label class="field field-checkbox">
+              <input type="checkbox" id="taxRuleNeedWithholding" />
+              <span>ต้องมีหัก ณ ที่จ่าย</span>
+            </label>
+          </div>
+
+          <label class="field">
+            <span>คำแนะนำ</span>
+            <textarea id="taxRuleGuide" rows="4" placeholder="คำอธิบายเพิ่มเติม"></textarea>
+          </label>
+
+          <div class="modal-footer">
+            <button type="button" class="btn btn-outline" data-close-modal="taxRuleModal">ยกเลิก</button>
+            <button type="submit" class="btn btn-primary">บันทึกกฎภาษี</button>
+          </div>
+        </form>
+      </div>
+    </div>
+
+    <!-- USER MODAL -->
+    <div class="modal" id="userModal">
+      <div class="modal-backdrop" data-close-modal="userModal"></div>
+      <div class="modal-dialog">
+        <div class="modal-header">
+          <div>
+            <h3>เพิ่มผู้ใช้งาน</h3>
+            <p>กำหนดผู้ใช้งานและ role</p>
+          </div>
+          <button class="modal-close" data-close-modal="userModal">×</button>
+        </div>
+
+        <form id="userForm" class="modal-body">
+          <label class="field">
+            <span>ชื่อ - นามสกุล</span>
+            <input type="text" id="userFullName" placeholder="ชื่อผู้ใช้งาน" />
+          </label>
+
+          <label class="field">
+            <span>Username</span>
+            <input type="text" id="userUsername" placeholder="username" />
+          </label>
+
+          <label class="field">
+            <span>Password</span>
+            <input type="password" id="userPassword" placeholder="password" />
+          </label>
+
+          <label class="field">
+            <span>Role</span>
+            <select id="userRole"></select>
+          </label>
+
+          <label class="field">
+            <span>แผนก</span>
+            <input type="text" id="userDepartment" placeholder="เช่น Accounting / Freight / Operation" />
+          </label>
+
+          <label class="field field-checkbox">
+            <input type="checkbox" id="userIsActive" checked />
+            <span>เปิดใช้งาน</span>
+          </label>
+
+          <div class="modal-footer">
+            <button type="button" class="btn btn-outline" data-close-modal="userModal">ยกเลิก</button>
+            <button type="submit" class="btn btn-primary">บันทึกผู้ใช้งาน</button>
+          </div>
+        </form>
+      </div>
+    </div>
+
+    <!-- DETAIL MODAL -->
+    <div class="modal" id="requestDetailModal">
+      <div class="modal-backdrop" data-close-modal="requestDetailModal"></div>
+      <div class="modal-dialog modal-xl">
+        <div class="modal-header">
+          <div>
+            <h3>รายละเอียดรายการ</h3>
+            <p>ดูข้อมูลรายการ เอกสาร และสถานะทั้งหมด</p>
+          </div>
+          <button class="modal-close" data-close-modal="requestDetailModal">×</button>
+        </div>
+
+        <div class="modal-body">
+          <div id="requestDetailContent"></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- TOAST -->
+    <div class="toast-stack" id="toastStack"></div>
+  </div>
+
+  <script src="app.js"></script>
+</body>
+</html>
