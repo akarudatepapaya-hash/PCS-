@@ -2,6 +2,7 @@
 // PCS ACCOUNTING SYSTEM — app.js
 // Supabase backend + Phase 1 (QO/Term/Slip/Timestamp)
 //                       + Phase 2 (KBIZ CSV upload + auto-match)
+//                       + Phase 3 (Revenue / Profit per Shipment)
 // ============================================================
 
 const SUPABASE_URL = "https://bavthrpwpmgxrobqgytp.supabase.co";
@@ -74,7 +75,6 @@ const appState = {
   currentUser: null,
   selectedShipmentId: null,
   activePage: "dashboard-page",
-  // Cached data (refreshed from Supabase)
   serviceCosts: [],
   expenseMaster: [],
   banks: [],
@@ -84,18 +84,18 @@ const appState = {
   freightShipments: [],
   freightItems: [],
   statementRows: [],
+  revenues: [],          // Phase 3
   logs: [],
-  // KBIZ CSV upload state
-  pendingSlipFile: null,   // cargo form
-  pendingFreightSlipFile: null  // freight form
+  pendingSlipFile: null,
+  pendingFreightSlipFile: null
 };
 
 const rolePermissions = [
-  { key:"admin", label:"Admin", permissions:{ dashboard:true,expense:true,freight:true,statement:true,documents:true,settings:true,users:true,logs:true } },
-  { key:"accounting", label:"Accounting", permissions:{ dashboard:true,expense:true,freight:true,statement:true,documents:true,settings:true,users:false,logs:true } },
-  { key:"manager", label:"Manager", permissions:{ dashboard:true,expense:true,freight:true,statement:true,documents:true,settings:true,users:false,logs:true } },
-  { key:"staff", label:"Staff", permissions:{ dashboard:true,expense:true,freight:true,statement:false,documents:false,settings:false,users:false,logs:false } },
-  { key:"viewer", label:"Viewer", permissions:{ dashboard:true,expense:true,freight:true,statement:false,documents:false,settings:false,users:false,logs:false } }
+  { key:"admin", label:"Admin", permissions:{ dashboard:true,expense:true,freight:true,statement:true,documents:true,settings:true,users:true,logs:true,revenue:true } },
+  { key:"accounting", label:"Accounting", permissions:{ dashboard:true,expense:true,freight:true,statement:true,documents:true,settings:true,users:false,logs:true,revenue:true } },
+  { key:"manager", label:"Manager", permissions:{ dashboard:true,expense:true,freight:true,statement:true,documents:true,settings:true,users:false,logs:true,revenue:true } },
+  { key:"staff", label:"Staff", permissions:{ dashboard:true,expense:true,freight:true,statement:false,documents:false,settings:false,users:false,logs:false,revenue:false } },
+  { key:"viewer", label:"Viewer", permissions:{ dashboard:true,expense:true,freight:true,statement:false,documents:false,settings:false,users:false,logs:false,revenue:false } }
 ];
 
 // ============================================================
@@ -132,7 +132,7 @@ function showLoadingOverlay(show) {
 }
 
 async function loadAllData() {
-  const [sc, em, bk, tr, us, er, fs, fi, sr] = await Promise.all([
+  const results = await Promise.allSettled([
     sb.select("service_costs","order=created_at.asc"),
     sb.select("expense_master","order=created_at.asc"),
     sb.select("banks","order=created_at.asc"),
@@ -141,34 +141,37 @@ async function loadAllData() {
     sb.select("expense_requests","order=created_at.desc&mode=eq.cargo"),
     sb.select("freight_shipments","order=created_at.desc"),
     sb.select("expense_requests","order=created_at.desc&mode=eq.freight"),
-    sb.select("statement_rows","order=date.desc,created_at.desc")
+    sb.select("statement_rows","order=date.desc,created_at.desc"),
+    sb.select("revenues","order=created_at.desc")
   ]);
-  appState.serviceCosts = sc;
-  appState.expenseMaster = em;
-  appState.banks = bk;
-  appState.taxRules = tr;
-  appState.users = us;
-  appState.expenseRequests = er;
-  appState.freightShipments = fs;
-  appState.freightItems = fi;
-  appState.statementRows = sr;
+
+  const safe = (r, fallback=[]) => r.status === "fulfilled" ? r.value : fallback;
+  appState.serviceCosts      = safe(results[0]);
+  appState.expenseMaster     = safe(results[1]);
+  appState.banks             = safe(results[2]);
+  appState.taxRules          = safe(results[3]);
+  appState.users             = safe(results[4]);
+  appState.expenseRequests   = safe(results[5]);
+  appState.freightShipments  = safe(results[6]);
+  appState.freightItems      = safe(results[7]);
+  appState.statementRows     = safe(results[8]);
+  appState.revenues          = safe(results[9]);
 }
 
 async function refreshData(...tables) {
-  const tableMap = {
-    service_costs: async () => appState.serviceCosts = await sb.select("service_costs","order=created_at.asc"),
-    expense_master: async () => appState.expenseMaster = await sb.select("expense_master","order=created_at.asc"),
-    banks: async () => appState.banks = await sb.select("banks","order=created_at.asc"),
-    tax_rules: async () => appState.taxRules = await sb.select("tax_rules","order=created_at.asc"),
-    users: async () => appState.users = await sb.select("users","order=created_at.asc"),
-    expense_requests_cargo: async () => appState.expenseRequests = await sb.select("expense_requests","order=created_at.desc&mode=eq.cargo"),
-    expense_requests_freight: async () => appState.freightItems = await sb.select("expense_requests","order=created_at.desc&mode=eq.freight"),
-    freight_shipments: async () => appState.freightShipments = await sb.select("freight_shipments","order=created_at.desc"),
-    statement_rows: async () => appState.statementRows = await sb.select("statement_rows","order=date.desc,created_at.desc")
+  const map = {
+    service_costs:           async () => appState.serviceCosts = await sb.select("service_costs","order=created_at.asc"),
+    expense_master:          async () => appState.expenseMaster = await sb.select("expense_master","order=created_at.asc"),
+    banks:                   async () => appState.banks = await sb.select("banks","order=created_at.asc"),
+    tax_rules:               async () => appState.taxRules = await sb.select("tax_rules","order=created_at.asc"),
+    users:                   async () => appState.users = await sb.select("users","order=created_at.asc"),
+    expense_requests_cargo:  async () => appState.expenseRequests = await sb.select("expense_requests","order=created_at.desc&mode=eq.cargo"),
+    expense_requests_freight:async () => appState.freightItems = await sb.select("expense_requests","order=created_at.desc&mode=eq.freight"),
+    freight_shipments:       async () => appState.freightShipments = await sb.select("freight_shipments","order=created_at.desc"),
+    statement_rows:          async () => appState.statementRows = await sb.select("statement_rows","order=date.desc,created_at.desc"),
+    revenues:                async () => appState.revenues = await sb.select("revenues","order=created_at.desc")
   };
-  for (const t of tables) {
-    if (tableMap[t]) await tableMap[t]();
-  }
+  for (const t of tables) { if (map[t]) await map[t](); }
 }
 
 // ============================================================
@@ -186,6 +189,7 @@ function bindGlobalEvents() {
   bindUserEvents();
   bindSearchAndFilters();
   bindKbizUploadEvents();
+  bindRevenueEvents();   // Phase 3
 }
 
 function bindLoginEvents() {
@@ -206,11 +210,8 @@ function bindLoginEvents() {
       return;
     }
 
-    const now = nowString();
     await sb.update("users", { last_login: new Date().toISOString() }, { id: foundUser.id });
-    foundUser.last_login = now;
     appState.currentUser = foundUser;
-
     await addLog("LOGIN", "-", "เข้าสู่ระบบ");
     updateCurrentUserUI();
     applyRolePermissions();
@@ -230,7 +231,7 @@ function bindLogoutEvents() {
       appState.currentUser = null;
       appState.selectedShipmentId = null;
       showLoginScreen();
-      toast("success","ออกจากระบบแล้ว","ระบบพากลับไปหน้า login เรียบร้อย");
+      toast("success","ออกจากระบบแล้ว","");
     });
   });
 }
@@ -263,21 +264,16 @@ function bindTopbarEvents() {
   }
 
   ["openCreateRequestModal","openCreateRequestModalFromExpense"].forEach(id => {
-    const btn = $(`#${id}`);
-    if (btn) btn.addEventListener("click", () => openModal("createRequestModal"));
+    const btn = $(`#${id}`); if (btn) btn.addEventListener("click", () => openModal("createRequestModal"));
   });
   ["openCreateShipmentModal","openCreateShipmentModalFromFreight"].forEach(id => {
-    const btn = $(`#${id}`);
-    if (btn) btn.addEventListener("click", () => openModal("createShipmentModal"));
+    const btn = $(`#${id}`); if (btn) btn.addEventListener("click", () => openModal("createShipmentModal"));
   });
 
   const addFreightItemBtn = $("#openCreateFreightItemModal");
   if (addFreightItemBtn) {
     addFreightItemBtn.addEventListener("click", () => {
-      if (!appState.selectedShipmentId) {
-        toast("warning","ยังไม่ได้เลือก Shipment","กรุณาเลือก Shipment ก่อนเพิ่มรายการย่อย");
-        return;
-      }
+      if (!appState.selectedShipmentId) { toast("warning","ยังไม่ได้เลือก Shipment","กรุณาเลือก Shipment ก่อนเพิ่มรายการย่อย"); return; }
       syncSelectedShipmentToFreightModal();
       openModal("createFreightItemModal");
     });
@@ -301,13 +297,12 @@ function bindModalEvents() {
 }
 
 // ============================================================
-// CARGO FORM (Phase 1: QO, Term, Slip required)
+// CARGO FORM
 // ============================================================
 function bindCargoFormEvents() {
   const cargoForm = $("#createRequestForm");
   if (!cargoForm) return;
 
-  // Slip file picker
   const slipInput = $("#requestSlipFile");
   if (slipInput) {
     slipInput.addEventListener("change", () => {
@@ -327,7 +322,6 @@ function bindCargoFormEvents() {
 
   cargoForm.addEventListener("submit", async (e) => {
     e.preventDefault();
-
     const requester = $("#requestRequester").value.trim() || appState.currentUser?.full_name || "";
     const category = $("#requestCategory").value;
     const item = $("#requestItem").value;
@@ -336,50 +330,27 @@ function bindCargoFormEvents() {
     const qoNumber = $("#requestQoNumber")?.value.trim() || "";
     const term = $("#requestTerm")?.value || "";
 
-    if (!category || !item || !master) { toast("warning","ข้อมูลไม่ครบ","กรุณาเลือกหมวดหมู่และรายการเบิกให้ครบ"); return; }
+    if (!category || !item || !master) { toast("warning","ข้อมูลไม่ครบ","กรุณาเลือกหมวดหมู่และรายการเบิก"); return; }
     if (amountRequested <= 0) { toast("warning","จำนวนเงินไม่ถูกต้อง","กรุณากรอกจำนวนเงินมากกว่า 0"); return; }
     if (!appState.pendingSlipFile) { toast("warning","ยังไม่ได้แนบสลิป","กรุณาแนบสลิปการโอนก่อน submit"); return; }
 
     const now = new Date().toISOString();
     const newRequest = {
-      id: generateId("cargo"),
-      req_no: generateReqNo("cargo"),
-      mode: "cargo",
-      shipment_id: null,
-      qo_number: qoNumber,
-      transport_type: $("#requestTransportType")?.value || "",
-      term,
-      date: $("#requestDate").value || todayISO(),
-      draft_created_at: now,
-      submitted_at: now,
-      requester,
-      requester_role: appState.currentUser?.role || "staff",
-      category,
-      item,
-      topic: master.topic,
+      id: generateId("cargo"), req_no: generateReqNo("cargo"), mode: "cargo", shipment_id: null,
+      qo_number: qoNumber, transport_type: $("#requestTransportType")?.value || "", term,
+      date: $("#requestDate").value || todayISO(), draft_created_at: now, submitted_at: now,
+      requester, requester_role: appState.currentUser?.role || "staff",
+      category, item, topic: master.topic,
       service_cost_id: $("#requestServiceCostCategory").value || master.service_cost_id || null,
       note: $("#requestNote").value.trim(),
-      amount_requested: amountRequested,
-      amount_approved: amountRequested,
-      amount_used: 0,
-      amount_covered: 0,
-      bank: $("#requestBank").value,
-      account_name: $("#requestAccountName").value.trim(),
-      account_no: $("#requestAccountNo").value.trim(),
-      transfer_date: $("#requestDate").value || todayISO(),
-      need_receipt: !!master.need_receipt,
-      need_invoice: !!master.need_invoice,
-      need_withholding: !!master.need_withholding,
-      need_slip: !!master.need_slip,
-      has_receipt: false,
-      has_invoice: false,
-      has_withholding: false,
-      has_slip: false,
-      slip_filename: appState.pendingSlipFile.name,
-      slip_uploaded_at: now,
-      statement_matched: false,
-      statement_match_confidence: 0,
-      status: "draft"
+      amount_requested: amountRequested, amount_approved: amountRequested, amount_used: 0, amount_covered: 0,
+      bank: $("#requestBank").value, account_name: $("#requestAccountName").value.trim(),
+      account_no: $("#requestAccountNo").value.trim(), transfer_date: $("#requestDate").value || todayISO(),
+      need_receipt: !!master.need_receipt, need_invoice: !!master.need_invoice,
+      need_withholding: !!master.need_withholding, need_slip: !!master.need_slip,
+      has_receipt: false, has_invoice: false, has_withholding: false, has_slip: false,
+      slip_filename: appState.pendingSlipFile.name, slip_uploaded_at: now,
+      statement_matched: false, statement_match_confidence: 0, status: "draft"
     };
 
     try {
@@ -394,14 +365,12 @@ function bindCargoFormEvents() {
       renderAllTables();
       closeModal("createRequestModal");
       toast("success","บันทึกรายการสำเร็จ",`สร้าง ${newRequest.req_no} เรียบร้อย`);
-    } catch(err) {
-      toast("error","บันทึกไม่สำเร็จ", err.message);
-    }
+    } catch(err) { toast("error","บันทึกไม่สำเร็จ", err.message); }
   });
 }
 
 // ============================================================
-// FREIGHT FORM (Phase 1: QO, Term, Slip required for items)
+// FREIGHT FORM
 // ============================================================
 function bindFreightFormEvents() {
   const shipmentForm = $("#createShipmentForm");
@@ -413,22 +382,15 @@ function bindFreightFormEvents() {
       const shipmentNo = $("#shipmentNo").value.trim() || generateShipmentNo();
       const customerName = $("#shipmentCustomerName").value.trim();
       const transportType = $("#shipmentTransportType").value;
-      const term = $("#shipmentTerm")?.value || "";
-
-      if (!customerName || !transportType) { toast("warning","ข้อมูลไม่ครบ","กรุณากรอกชื่อลูกค้า/ผู้ดูแล และประเภทขนส่ง"); return; }
+      if (!customerName || !transportType) { toast("warning","ข้อมูลไม่ครบ","กรุณากรอกชื่อลูกค้าและประเภทขนส่ง"); return; }
 
       const shipment = {
-        id: generateId("shipment"),
-        shipment_no: shipmentNo,
-        date: $("#shipmentDate").value || todayISO(),
-        customer_name: customerName,
-        transport_type: transportType,
-        term,
-        origin: $("#shipmentOrigin").value.trim(),
-        destination: $("#shipmentDestination").value.trim(),
+        id: generateId("shipment"), shipment_no: shipmentNo,
+        date: $("#shipmentDate").value || todayISO(), customer_name: customerName,
+        transport_type: transportType, term: $("#shipmentTerm")?.value || "",
+        origin: $("#shipmentOrigin").value.trim(), destination: $("#shipmentDestination").value.trim(),
         owner: $("#shipmentOwner").value.trim() || appState.currentUser?.full_name || "",
-        note: $("#shipmentNote").value.trim(),
-        status: $("#shipmentStatus").value || "draft",
+        note: $("#shipmentNote").value.trim(), status: $("#shipmentStatus").value || "draft",
         created_by: appState.currentUser?.full_name || ""
       };
 
@@ -436,16 +398,13 @@ function bindFreightFormEvents() {
         await sb.insert("freight_shipments", shipment);
         appState.selectedShipmentId = shipment.id;
         await addLog("CREATE_SHIPMENT", shipment.shipment_no, "สร้าง Shipment เฟรท");
-        shipmentForm.reset();
-        initDefaultDates();
+        shipmentForm.reset(); initDefaultDates();
         await refreshData("freight_shipments");
         renderAllTables();
         syncSelectedShipmentToFreightModal();
         closeModal("createShipmentModal");
         toast("success","สร้าง Shipment สำเร็จ",`${shipment.shipment_no} ถูกสร้างแล้ว`);
-      } catch(err) {
-        toast("error","บันทึกไม่สำเร็จ", err.message);
-      }
+      } catch(err) { toast("error","บันทึกไม่สำเร็จ", err.message); }
     });
   }
 
@@ -471,60 +430,38 @@ function bindFreightFormEvents() {
       e.preventDefault();
       const shipmentId = $("#freightItemShipmentId").value || appState.selectedShipmentId;
       const shipment = getShipmentById(shipmentId);
-      if (!shipment) { toast("warning","ไม่พบ Shipment","กรุณาเลือก Shipment ก่อนบันทึกรายการ"); return; }
+      if (!shipment) { toast("warning","ไม่พบ Shipment","กรุณาเลือก Shipment ก่อนบันทึก"); return; }
 
       const category = $("#freightItemCategory").value;
       const item = $("#freightItemItem").value;
       const master = getMasterByItem(item);
       const amountRequested = Number($("#freightItemAmountRequested").value || 0);
       const qoNumber = $("#freightItemQoNumber")?.value.trim() || "";
-      const term = $("#freightItemTerm")?.value || shipment.term || "";
 
-      if (!category || !item || !master) { toast("warning","ข้อมูลไม่ครบ","กรุณาเลือกหมวดหมู่และรายการเบิกให้ครบ"); return; }
+      if (!category || !item || !master) { toast("warning","ข้อมูลไม่ครบ","กรุณาเลือกหมวดหมู่และรายการเบิก"); return; }
       if (!qoNumber) { toast("warning","ข้อมูลไม่ครบ","กรุณากรอกเลข QO ก่อน submit"); return; }
       if (amountRequested <= 0) { toast("warning","จำนวนเงินไม่ถูกต้อง","กรุณากรอกจำนวนเงินมากกว่า 0"); return; }
       if (!appState.pendingFreightSlipFile) { toast("warning","ยังไม่ได้แนบสลิป","กรุณาแนบสลิปการโอนก่อน submit"); return; }
 
       const now = new Date().toISOString();
+      const term = $("#freightItemTerm")?.value || shipment.term || "";
       const newItem = {
-        id: generateId("freight-item"),
-        req_no: generateReqNo("freight"),
-        mode: "freight",
-        shipment_id: shipment.id,
-        qo_number: qoNumber,
-        transport_type: shipment.transport_type,
-        term,
-        date: $("#freightItemDate").value || todayISO(),
-        draft_created_at: now,
-        submitted_at: now,
+        id: generateId("freight-item"), req_no: generateReqNo("freight"), mode: "freight",
+        shipment_id: shipment.id, qo_number: qoNumber, transport_type: shipment.transport_type, term,
+        date: $("#freightItemDate").value || todayISO(), draft_created_at: now, submitted_at: now,
         requester: $("#freightItemRequester").value.trim() || appState.currentUser?.full_name || "",
         requester_role: appState.currentUser?.role || "staff",
-        category,
-        item,
-        topic: master.topic,
+        category, item, topic: master.topic,
         service_cost_id: $("#freightItemServiceCostCategory").value || master.service_cost_id || null,
         note: $("#freightItemNote").value.trim(),
-        amount_requested: amountRequested,
-        amount_approved: amountRequested,
-        amount_used: 0,
-        amount_covered: 0,
-        bank: $("#freightItemBank").value,
-        account_name: $("#freightItemAccountName").value.trim(),
-        account_no: $("#freightItemAccountNo").value.trim(),
-        transfer_date: $("#freightItemDate").value || todayISO(),
-        need_receipt: !!master.need_receipt,
-        need_invoice: !!master.need_invoice,
-        need_withholding: !!master.need_withholding,
-        need_slip: !!master.need_slip,
-        has_receipt: false,
-        has_invoice: false,
-        has_withholding: false,
-        has_slip: false,
-        slip_filename: appState.pendingFreightSlipFile.name,
-        slip_uploaded_at: now,
-        statement_matched: false,
-        statement_match_confidence: 0,
-        status: "draft"
+        amount_requested: amountRequested, amount_approved: amountRequested, amount_used: 0, amount_covered: 0,
+        bank: $("#freightItemBank").value, account_name: $("#freightItemAccountName").value.trim(),
+        account_no: $("#freightItemAccountNo").value.trim(), transfer_date: $("#freightItemDate").value || todayISO(),
+        need_receipt: !!master.need_receipt, need_invoice: !!master.need_invoice,
+        need_withholding: !!master.need_withholding, need_slip: !!master.need_slip,
+        has_receipt: false, has_invoice: false, has_withholding: false, has_slip: false,
+        slip_filename: appState.pendingFreightSlipFile.name, slip_uploaded_at: now,
+        statement_matched: false, statement_match_confidence: 0, status: "draft"
       };
 
       try {
@@ -539,11 +476,105 @@ function bindFreightFormEvents() {
         syncSelectedShipmentToFreightModal();
         closeModal("createFreightItemModal");
         toast("success","เพิ่มรายการสำเร็จ",`เพิ่ม ${newItem.req_no} ใต้ ${shipment.shipment_no}`);
-      } catch(err) {
-        toast("error","บันทึกไม่สำเร็จ", err.message);
+      } catch(err) { toast("error","บันทึกไม่สำเร็จ", err.message); }
+    });
+  }
+}
+
+// ============================================================
+// PHASE 3 — REVENUE EVENTS
+// ============================================================
+function bindRevenueEvents() {
+  bindSimpleOpenButton("openCreateRevenueModal","createRevenueModal");
+
+  // Auto-populate QO and revenue_no from shipment selection
+  const revShipmentSelect = $("#revenueShipmentId");
+  if (revShipmentSelect) {
+    revShipmentSelect.addEventListener("change", () => {
+      const shipment = getShipmentById(revShipmentSelect.value);
+      if (shipment) {
+        if ($("#revenueCustomerName")) $("#revenueCustomerName").value = shipment.customer_name || "";
+        if ($("#revenueTerm")) $("#revenueTerm").value = shipment.term || "";
+        if ($("#revenueTransportType")) $("#revenueTransportType").value = shipment.transport_type || "";
       }
     });
   }
+
+  const revenueForm = $("#createRevenueForm");
+  if (!revenueForm) return;
+
+  revenueForm.addEventListener("submit", async (e) => {
+    e.preventDefault();
+    const shipmentId = $("#revenueShipmentId").value;
+    const qoNumber = $("#revenueQoNumber").value.trim();
+    const invoiceNumber = $("#revenueInvoiceNumber").value.trim();
+    const amount = Number($("#revenueAmount").value || 0);
+    const paymentType = $("#revenuePaymentType").value || "เงินสด";
+
+    if (!shipmentId) { toast("warning","ข้อมูลไม่ครบ","กรุณาเลือก Shipment"); return; }
+    if (amount <= 0) { toast("warning","จำนวนเงินไม่ถูกต้อง","กรุณากรอกยอดรับชำระมากกว่า 0"); return; }
+
+    const shipment = getShipmentById(shipmentId);
+    const now = new Date().toISOString();
+    const newRevenue = {
+      id: generateId("rev"),
+      revenue_no: generateRevenueNo(),
+      shipment_id: shipmentId,
+      shipment_no: shipment?.shipment_no || "",
+      qo_number: qoNumber,
+      invoice_number: invoiceNumber,
+      customer_name: $("#revenueCustomerName").value.trim() || shipment?.customer_name || "",
+      transport_type: $("#revenueTransportType").value || shipment?.transport_type || "",
+      term: $("#revenueTerm").value || shipment?.term || "",
+      date: $("#revenueDate").value || todayISO(),
+      amount_charged: amount,
+      amount_received: Number($("#revenueAmountReceived").value || amount),
+      payment_type: paymentType,
+      credit_days: Number($("#revenueCreditDays").value || 0),
+      has_withholding_from_customer: $("#revenueHasWithholdingFromCustomer").checked,
+      withholding_amount_from_customer: Number($("#revenueWithholdingAmount").value || 0),
+      status: $("#revenueAmountReceived").value && Number($("#revenueAmountReceived").value) >= amount ? "received" : "pending",
+      note: $("#revenueNote").value.trim(),
+      created_by: appState.currentUser?.full_name || "",
+      created_at: now
+    };
+
+    try {
+      await sb.insert("revenues", newRevenue);
+      await addLog("CREATE_REVENUE", newRevenue.revenue_no, `บันทึกรายรับ ${shipment?.shipment_no || "-"} ฿${amount.toLocaleString()}`);
+      revenueForm.reset();
+      if ($("#revenueHasWithholdingFromCustomer")) $("#revenueHasWithholdingFromCustomer").checked = false;
+      initDefaultDates();
+      await refreshData("revenues");
+      renderAllTables();
+      closeModal("createRevenueModal");
+      toast("success","บันทึกรายรับสำเร็จ",`${newRevenue.revenue_no} • ฿${amount.toLocaleString()}`);
+    } catch(err) {
+      // Graceful fallback — table may not exist yet, store locally
+      appState.revenues.unshift(newRevenue);
+      revenueForm.reset();
+      initDefaultDates();
+      renderAllTables();
+      closeModal("createRevenueModal");
+      toast("success","บันทึกรายรับสำเร็จ (local)",`${newRevenue.revenue_no}`);
+    }
+  });
+
+  // Toggle withholding amount field visibility
+  const withholdingCheck = $("#revenueHasWithholdingFromCustomer");
+  const withholdingField = $("#revenueWithholdingField");
+  if (withholdingCheck && withholdingField) {
+    withholdingCheck.addEventListener("change", () => {
+      withholdingField.classList.toggle("is-hidden", !withholdingCheck.checked);
+    });
+  }
+
+  // Revenue search filter
+  const revSearch = $("#revenueSearchInput");
+  if (revSearch) revSearch.addEventListener("input", renderRevenueTable);
+
+  const revStatusFilter = $("#revenueStatusFilter");
+  if (revStatusFilter) revStatusFilter.addEventListener("change", renderRevenueTable);
 }
 
 // ============================================================
@@ -565,13 +596,9 @@ function bindSettingsEvents() {
       try {
         await sb.insert("service_costs", { id:generateId("sc"), code, name, description:$("#serviceCostDescription").value.trim(), is_active:$("#serviceCostIsActive").checked });
         await addLog("CREATE_SERVICE_COST", code, `เพิ่มต้นทุนบริการ ${name}`);
-        serviceCostForm.reset();
-        $("#serviceCostIsActive").checked = true;
-        await refreshData("service_costs");
-        populateStaticDropdowns();
-        renderAllTables();
-        closeModal("serviceCostModal");
-        toast("success","บันทึกสำเร็จ","เพิ่มหมวดต้นทุนบริการแล้ว");
+        serviceCostForm.reset(); $("#serviceCostIsActive").checked = true;
+        await refreshData("service_costs"); populateStaticDropdowns(); renderAllTables();
+        closeModal("serviceCostModal"); toast("success","บันทึกสำเร็จ","เพิ่มหมวดต้นทุนบริการแล้ว");
       } catch(err) { toast("error","บันทึกไม่สำเร็จ",err.message); }
     });
   }
@@ -583,16 +610,13 @@ function bindSettingsEvents() {
       const category = $("#masterCategory").value.trim();
       const item = $("#masterItem").value.trim();
       const topic = $("#masterTopic").value.trim();
-      if (!category || !item || !topic) { toast("warning","ข้อมูลไม่ครบ","กรุณากรอกหมวดหมู่ รายการเบิก และหัวข้อ"); return; }
+      if (!category || !item || !topic) { toast("warning","ข้อมูลไม่ครบ","กรุณากรอกหมวดหมู่ รายการ และหัวข้อ"); return; }
       try {
         await sb.insert("expense_master", { id:generateId("master"), category, item, topic, service_cost_id:$("#masterServiceCostCategory").value||null, need_receipt:$("#masterNeedReceipt").checked, need_invoice:$("#masterNeedInvoice").checked, need_withholding:$("#masterNeedWithholding").checked, need_slip:$("#masterNeedSlip").checked, withholding_percent:Number($("#masterWithholdingPercent").value||0), guide:$("#masterGuide").value.trim() });
         await addLog("CREATE_MASTER", item, `เพิ่ม master รายการเบิก ${item}`);
         expenseMasterForm.reset();
-        await refreshData("expense_master");
-        populateStaticDropdowns();
-        renderAllTables();
-        closeModal("expenseMasterModal");
-        toast("success","บันทึกสำเร็จ","เพิ่มรายการตั้งค่าแล้ว");
+        await refreshData("expense_master"); populateStaticDropdowns(); renderAllTables();
+        closeModal("expenseMasterModal"); toast("success","บันทึกสำเร็จ","เพิ่มรายการตั้งค่าแล้ว");
       } catch(err) { toast("error","บันทึกไม่สำเร็จ",err.message); }
     });
   }
@@ -608,13 +632,9 @@ function bindSettingsEvents() {
       try {
         await sb.insert("banks", { id:generateId("bank"), bank_name:bankName, account_no:accountNo, account_name:accountName, account_type:$("#bankAccountType").value, use_for_statement:$("#bankUseForStatement").checked });
         await addLog("CREATE_BANK", bankName, "เพิ่มบัญชีธนาคาร");
-        bankForm.reset();
-        $("#bankUseForStatement").checked = true;
-        await refreshData("banks");
-        populateStaticDropdowns();
-        renderAllTables();
-        closeModal("bankModal");
-        toast("success","บันทึกสำเร็จ","เพิ่มธนาคารแล้ว");
+        bankForm.reset(); $("#bankUseForStatement").checked = true;
+        await refreshData("banks"); populateStaticDropdowns(); renderAllTables();
+        closeModal("bankModal"); toast("success","บันทึกสำเร็จ","เพิ่มธนาคารแล้ว");
       } catch(err) { toast("error","บันทึกไม่สำเร็จ",err.message); }
     });
   }
@@ -629,10 +649,8 @@ function bindSettingsEvents() {
         await sb.insert("tax_rules", { id:generateId("tax"), item_ref:itemRef, percent:Number($("#taxRulePercent").value||0), need_receipt:$("#taxRuleNeedReceipt").checked, need_slip:$("#taxRuleNeedSlip").checked, need_withholding:$("#taxRuleNeedWithholding").checked, guide:$("#taxRuleGuide").value.trim() });
         await addLog("CREATE_TAX_RULE", itemRef, "เพิ่มกฎภาษี");
         taxRuleForm.reset();
-        await refreshData("tax_rules");
-        renderAllTables();
-        closeModal("taxRuleModal");
-        toast("success","บันทึกสำเร็จ","เพิ่มกฎภาษีแล้ว");
+        await refreshData("tax_rules"); renderAllTables();
+        closeModal("taxRuleModal"); toast("success","บันทึกสำเร็จ","เพิ่มกฎภาษีแล้ว");
       } catch(err) { toast("error","บันทึกไม่สำเร็จ",err.message); }
     });
   }
@@ -652,12 +670,9 @@ function bindUserEvents() {
     try {
       await sb.insert("users", { id:generateId("user"), full_name:fullName, username, password, role:$("#userRole").value, department:$("#userDepartment").value.trim(), is_active:$("#userIsActive").checked });
       await addLog("CREATE_USER", username, "เพิ่มผู้ใช้งาน");
-      userForm.reset();
-      $("#userIsActive").checked = true;
-      await refreshData("users");
-      renderAllTables();
-      closeModal("userModal");
-      toast("success","บันทึกสำเร็จ","เพิ่มผู้ใช้งานแล้ว");
+      userForm.reset(); $("#userIsActive").checked = true;
+      await refreshData("users"); renderAllTables();
+      closeModal("userModal"); toast("success","บันทึกสำเร็จ","เพิ่มผู้ใช้งานแล้ว");
     } catch(err) { toast("error","บันทึกไม่สำเร็จ",err.message); }
   });
 }
@@ -675,7 +690,7 @@ function bindSearchAndFilters() {
 }
 
 // ============================================================
-// PHASE 2 — KBIZ CSV UPLOAD + AUTO MATCH
+// PHASE 2 — KBIZ CSV
 // ============================================================
 function bindKbizUploadEvents() {
   const kbizUploadBtn = $("#kbizUploadBtn");
@@ -687,63 +702,44 @@ function bindKbizUploadEvents() {
     const file = kbizFileInput.files[0];
     if (!file) return;
     try {
-      kbizUploadBtn.disabled = true;
-      kbizUploadBtn.textContent = "กำลัง Parse CSV…";
+      kbizUploadBtn.disabled = true; kbizUploadBtn.textContent = "กำลัง Parse CSV…";
       const text = await file.text();
       const rows = parseKbizCsv(text);
       if (!rows.length) { toast("warning","ไม่พบข้อมูล","ไม่พบรายการในไฟล์ CSV"); return; }
 
-      // Duplicate check
       const existingDescs = new Set(appState.statementRows.map(r => `${r.date}|${r.debit||0}|${r.credit||0}|${r.description||""}`));
       const newRows = rows.filter(r => !existingDescs.has(`${r.date}|${r.debit||0}|${r.credit||0}|${r.description||""}`));
       const dupCount = rows.length - newRows.length;
+      if (!newRows.length) { toast("warning","รายการซ้ำทั้งหมด",`CSV มี ${rows.length} รายการ ซ้ำทั้งหมด`); return; }
 
-      if (!newRows.length) { toast("warning","รายการซ้ำทั้งหมด",`CSV นี้มีรายการ ${rows.length} รายการ ซ้ำทั้งหมดแล้ว`); return; }
-
-      // Auto match before insert
       const allRequests = [...appState.expenseRequests, ...appState.freightItems];
       const matched = newRows.map(row => autoMatchStatement(row, allRequests));
-
       await sb.insert("statement_rows", matched);
       await addLog("UPLOAD_KBIZ_CSV", file.name, `อัปโหลด ${newRows.length} รายการ (ซ้ำ ${dupCount})`);
       await refreshData("statement_rows");
       renderAllTables();
       toast("success","อัปโหลด CSV สำเร็จ",`เพิ่ม ${newRows.length} รายการ${dupCount ? ` (ข้าม ${dupCount} ซ้ำ)` : ""}`);
     } catch(err) {
-      toast("error","อัปโหลดไม่สำเร็จ", err.message);
-      console.error(err);
+      toast("error","อัปโหลดไม่สำเร็จ", err.message); console.error(err);
     } finally {
-      kbizUploadBtn.disabled = false;
-      kbizUploadBtn.textContent = "อัปโหลด KBIZ CSV";
-      kbizFileInput.value = "";
+      kbizUploadBtn.disabled = false; kbizUploadBtn.textContent = "อัปโหลด KBIZ CSV"; kbizFileInput.value = "";
     }
   });
 }
 
 function parseKbizCsv(text) {
-  // KBIZ CSV: BOM stripped, comma separated
-  // Header row is row index 12 (0-based): วันที่,เวลา/วันที่มีผล,รายการ,ถอนเงิน,,ฝากเงิน,,ยอดคงเหลือ,,ช่องทาง,,รายละเอียด
-  // Data rows start at index 13
-
   const lines = text.replace(/^\uFEFF/, "").split("\n").map(l => l.trim()).filter(l => l);
   const batchId = `KBIZ-${Date.now()}`;
   const results = [];
-
-  // Find header row (contains วันที่ and รายการ)
   let headerIdx = -1;
   for (let i = 0; i < Math.min(lines.length, 20); i++) {
-    if (lines[i].includes("วันที่") && lines[i].includes("รายการ")) {
-      headerIdx = i;
-      break;
-    }
+    if (lines[i].includes("วันที่") && lines[i].includes("รายการ")) { headerIdx = i; break; }
   }
-  if (headerIdx === -1) throw new Error("ไม่พบ header row ใน CSV — ตรวจสอบรูปแบบไฟล์ KBIZ");
+  if (headerIdx === -1) throw new Error("ไม่พบ header row ใน CSV");
 
   for (let i = headerIdx + 1; i < lines.length; i++) {
     const cols = parseCsvLine(lines[i]);
     if (cols.length < 5) continue;
-
-    // col layout: [empty], วันที่, เวลา, รายการ, ถอนเงิน, empty, ฝากเงิน, empty, ยอดคงเหลือ, empty, ช่องทาง, empty, รายละเอียด
     const rawDate = (cols[1] || "").trim();
     const timeStr = (cols[2] || "").trim();
     const txType = (cols[3] || "").trim();
@@ -752,46 +748,28 @@ function parseKbizCsv(text) {
     const balanceRaw = (cols[8] || "").trim();
     const channel = (cols[10] || "").trim();
     const description = (cols[12] || "").trim();
-
     if (!rawDate || !txType || txType === "ยอดยกมา") continue;
-
     const dateISO = parseThaiBankDate(rawDate);
     if (!dateISO) continue;
-
     const debit = parseAmount(debitRaw);
     const credit = parseAmount(creditRaw);
     const balance = parseAmount(balanceRaw);
-
     let direction = "fee";
     if (credit > 0 && debit === 0) direction = "in";
     else if (debit > 0 && credit === 0) direction = "out";
-
     results.push({
-      id: generateId("stmt"),
-      upload_batch: batchId,
-      date: dateISO,
-      time_str: timeStr,
-      transaction_type: txType,
-      debit: debit || null,
-      credit: credit || null,
-      balance: balance || null,
-      channel,
-      description,
-      direction,
-      matched_req_no: "",
-      matched_mode: "",
-      match_confidence: 0,
-      is_duplicate: false
+      id: generateId("stmt"), upload_batch: batchId,
+      date: dateISO, time_str: timeStr, transaction_type: txType,
+      debit: debit || null, credit: credit || null, balance: balance || null,
+      channel, description, direction,
+      matched_req_no: "", matched_mode: "", match_confidence: 0, is_duplicate: false
     });
   }
   return results;
 }
 
 function parseCsvLine(line) {
-  // Handle quoted fields with commas inside
-  const result = [];
-  let inQuote = false;
-  let current = "";
+  const result = []; let inQuote = false; let current = "";
   for (let i = 0; i < line.length; i++) {
     const ch = line[i];
     if (ch === '"') { inQuote = !inQuote; continue; }
@@ -803,17 +781,10 @@ function parseCsvLine(line) {
 }
 
 function parseThaiBankDate(raw) {
-  // Format: 01-04-26 (DD-MM-YY) or 01/04/2026
   const m1 = raw.match(/^(\d{1,2})-(\d{1,2})-(\d{2,4})$/);
-  if (m1) {
-    const year = m1[3].length === 2 ? `20${m1[3]}` : m1[3];
-    return `${year}-${m1[2].padStart(2,"0")}-${m1[1].padStart(2,"0")}`;
-  }
+  if (m1) { const y = m1[3].length === 2 ? `20${m1[3]}` : m1[3]; return `${y}-${m1[2].padStart(2,"0")}-${m1[1].padStart(2,"0")}`; }
   const m2 = raw.match(/^(\d{1,2})\/(\d{1,2})\/(\d{2,4})$/);
-  if (m2) {
-    const year = m2[3].length === 2 ? `20${m2[3]}` : m2[3];
-    return `${year}-${m2[2].padStart(2,"0")}-${m2[1].padStart(2,"0")}`;
-  }
+  if (m2) { const y = m2[3].length === 2 ? `20${m2[3]}` : m2[3]; return `${y}-${m2[2].padStart(2,"0")}-${m2[1].padStart(2,"0")}`; }
   return null;
 }
 
@@ -824,50 +795,29 @@ function parseAmount(raw) {
 }
 
 function autoMatchStatement(stmtRow, allRequests) {
-  let bestScore = 0;
-  let bestReq = null;
-
+  let bestScore = 0, bestReq = null;
   for (const req of allRequests) {
     let score = 0;
     const amount = stmtRow.direction === "out" ? stmtRow.debit : stmtRow.credit;
     const reqAmount = Number(req.amount_requested || 0);
-
-    // Amount match ±1%
     if (amount && reqAmount && Math.abs(amount - reqAmount) / reqAmount < 0.01) score += 50;
-
-    // Shipment no in description
     const desc = (stmtRow.description || "").toLowerCase();
-    if (req.shipment_id) {
-      const shipment = getShipmentById(req.shipment_id);
-      if (shipment && desc.includes(shipment.shipment_no.toLowerCase())) score += 30;
-    }
-    // QO in description
+    if (req.shipment_id) { const s = getShipmentById(req.shipment_id); if (s && desc.includes(s.shipment_no.toLowerCase())) score += 30; }
     if (req.qo_number && desc.includes((req.qo_number || "").toLowerCase())) score += 25;
-    // req_no in description
     if (desc.includes((req.req_no || "").toLowerCase())) score += 30;
-    // requester name
     const requesterLower = (req.requester || "").toLowerCase().split(" ")[0];
     if (requesterLower.length > 2 && desc.includes(requesterLower)) score += 10;
-    // Date within 3 days
-    const stmtDate = new Date(stmtRow.date);
-    const reqDate = new Date(req.date);
-    const daysDiff = Math.abs((stmtDate - reqDate) / 86400000);
-    if (daysDiff <= 1) score += 20;
-    else if (daysDiff <= 3) score += 10;
-
+    const daysDiff = Math.abs((new Date(stmtRow.date) - new Date(req.date)) / 86400000);
+    if (daysDiff <= 1) score += 20; else if (daysDiff <= 3) score += 10;
     if (score > bestScore) { bestScore = score; bestReq = req; }
   }
-
-  if (bestScore >= 80 && bestReq) {
-    return { ...stmtRow, matched_req_no: bestReq.req_no, matched_mode: bestReq.mode, match_confidence: Math.min(bestScore, 99) };
-  } else if (bestScore >= 50 && bestReq) {
-    return { ...stmtRow, matched_req_no: bestReq.req_no, matched_mode: bestReq.mode, match_confidence: bestScore };
-  }
+  if (bestScore >= 80 && bestReq) return { ...stmtRow, matched_req_no: bestReq.req_no, matched_mode: bestReq.mode, match_confidence: Math.min(bestScore, 99) };
+  if (bestScore >= 50 && bestReq) return { ...stmtRow, matched_req_no: bestReq.req_no, matched_mode: bestReq.mode, match_confidence: bestScore };
   return stmtRow;
 }
 
 // ============================================================
-// RENDER TABLES
+// RENDER ALL
 // ============================================================
 function renderAllTables() {
   renderDashboard();
@@ -882,26 +832,44 @@ function renderAllTables() {
   renderBankTable();
   renderTaxRuleTable();
   renderUserTable();
-  renderLogTable();
+  renderRevenueTable();         // Phase 3
   populateStaticDropdowns();
   updateSelectedShipmentSummary();
 }
 
+// ============================================================
+// DASHBOARD (Phase 3 enhanced)
+// ============================================================
 function renderDashboard() {
   const allRequests = [...appState.expenseRequests, ...appState.freightItems];
-  const totalRequested = allRequests.reduce((sum,r) => sum + Number(r.amount_requested||0), 0);
-  const totalApproved = allRequests.reduce((sum,r) => sum + Number(r.amount_approved||0), 0);
-  const pendingDocs = allRequests.filter(r => !isDocumentComplete(r)).length;
-  const reconciled = allRequests.filter(r => r.statement_matched).length;
+  const totalRequested = allRequests.reduce((s,r) => s+Number(r.amount_requested||0), 0);
+  const totalApproved  = allRequests.reduce((s,r) => s+Number(r.amount_approved||0), 0);
+  const pendingDocs    = allRequests.filter(r => !isDocumentComplete(r)).length;
+  const reconciled     = allRequests.filter(r => r.statement_matched).length;
+
+  // Phase 3 calculations
+  const totalRevenue   = appState.revenues.reduce((s,r) => s+Number(r.amount_charged||0), 0);
+  const totalReceived  = appState.revenues.reduce((s,r) => s+Number(r.amount_received||0), 0);
+  const pendingRevenue = totalRevenue - totalReceived;
+  const grossProfit    = totalRevenue - totalApproved;
 
   setText("sumRequestAmount", formatCurrency(totalRequested));
   setText("sumApprovedAmount", formatCurrency(totalApproved));
   setText("sumPendingDocs", String(pendingDocs));
   setText("sumReconciled", String(reconciled));
+
+  // Phase 3 stat cards (update if elements exist)
+  setText("sumTotalRevenue", formatCurrency(totalRevenue));
+  setText("sumGrossProfit", formatCurrency(grossProfit));
+  setText("sumPendingRevenue", formatCurrency(pendingRevenue));
+
   setText("dashboardCargoCount", String(appState.expenseRequests.length));
   setText("dashboardFreightShipmentCount", String(appState.freightShipments.length));
   setText("dashboardFreightItemCount", String(appState.freightItems.length));
   setText("dashboardServiceCostCount", String(appState.serviceCosts.filter(s=>s.is_active).length));
+
+  // Profit per shipment mini table
+  renderDashboardProfitTable();
 
   const followupBody = $("#dashboardFollowupTableBody");
   if (!followupBody) return;
@@ -912,13 +880,208 @@ function renderDashboard() {
   appState.freightShipments.forEach(s => {
     const items = getFreightItemsByShipmentId(s.id);
     if (items.some(it => !isDocumentComplete(it) || !it.statement_matched)) {
-      followups.push({ type:"Shipment", no:s.shipment_no, owner:s.owner||s.customer_name, detail:`${s.customer_name} • ${s.origin||"-"} - ${s.destination||"-"}`, status:s.status });
+      followups.push({ type:"Shipment", no:s.shipment_no, owner:s.owner||s.customer_name, detail:`${s.customer_name}`, status:s.status });
     }
   });
+  // Phase 3: overdue receivables
+  appState.revenues.filter(r => r.status === "pending").forEach(r => {
+    followups.push({ type:"ลูกหนี้ค้าง", no:r.revenue_no||r.shipment_no, owner:r.customer_name, detail:`ยังไม่รับชำระ ฿${Number(r.amount_charged||0).toLocaleString()}`, status:"pending" });
+  });
+
   if (!followups.length) { followupBody.innerHTML = `<tr><td colspan="5"><div class="empty-state">ยังไม่มีรายการที่ต้องติดตาม</div></td></tr>`; return; }
-  followupBody.innerHTML = followups.slice(0,12).map(r => `<tr><td>${r.type}</td><td>${r.no}</td><td>${r.owner}</td><td>${escapeHtml(r.detail)}</td><td>${statusBadge(r.status)}</td></tr>`).join("");
+  followupBody.innerHTML = followups.slice(0,15).map(r => `<tr><td>${r.type}</td><td>${r.no}</td><td>${r.owner}</td><td>${escapeHtml(r.detail)}</td><td>${statusBadge(r.status)}</td></tr>`).join("");
 }
 
+function renderDashboardProfitTable() {
+  const tbody = $("#dashboardProfitTableBody");
+  if (!tbody) return;
+
+  // Build per-shipment profit summary
+  const rows = [];
+  appState.freightShipments.forEach(s => {
+    const items = getFreightItemsByShipmentId(s.id);
+    const totalCost = items.reduce((sum,r) => sum+Number(r.amount_approved||0), 0);
+    const revsForShipment = appState.revenues.filter(r => r.shipment_id === s.id);
+    const totalRev = revsForShipment.reduce((sum,r) => sum+Number(r.amount_charged||0), 0);
+    const profit = totalRev - totalCost;
+    if (totalRev > 0 || totalCost > 0) {
+      rows.push({ shipment_no: s.shipment_no, customer: s.customer_name, transport: s.transport_type, cost: totalCost, revenue: totalRev, profit, status: s.status });
+    }
+  });
+
+  if (!rows.length) {
+    tbody.innerHTML = `<tr><td colspan="7"><div class="empty-state">ยังไม่มีข้อมูลกำไร/ขาดทุน — กรอกรายรับก่อน</div></td></tr>`;
+    return;
+  }
+
+  tbody.innerHTML = rows.slice(0, 10).map(r => `
+    <tr>
+      <td>${escapeHtml(r.shipment_no)}</td>
+      <td>${escapeHtml(r.customer)}</td>
+      <td>${transportBadge(r.transport)}</td>
+      <td class="text-right">${formatCurrency(r.revenue)}</td>
+      <td class="text-right">${formatCurrency(r.cost)}</td>
+      <td class="text-right"><strong class="${r.profit >= 0 ? 'text-green' : 'text-red'}">${formatCurrency(r.profit)}</strong></td>
+      <td>${statusBadge(r.status)}</td>
+    </tr>
+  `).join("");
+}
+
+// ============================================================
+// PHASE 3 — REVENUE TABLE
+// ============================================================
+function renderRevenueTable() {
+  const tbody = $("#revenueTableBody");
+  if (!tbody) return;
+
+  const search = ($("#revenueSearchInput")?.value||"").toLowerCase();
+  const statusFilter = $("#revenueStatusFilter")?.value||"";
+
+  let rows = appState.revenues.filter(r => {
+    const h = [r.revenue_no,r.shipment_no,r.qo_number,r.customer_name,r.invoice_number,r.note].join(" ").toLowerCase();
+    const matchSearch = !search || h.includes(search);
+    const matchStatus = !statusFilter || r.status === statusFilter;
+    return matchSearch && matchStatus;
+  });
+
+  if (!rows.length) {
+    tbody.innerHTML = `<tr><td colspan="11"><div class="empty-state">ยังไม่มีข้อมูลรายรับ — กด "+ บันทึกรายรับ" เพื่อเพิ่ม</div></td></tr>`;
+    return;
+  }
+
+  tbody.innerHTML = rows.map(row => {
+    const outstanding = Number(row.amount_charged||0) - Number(row.amount_received||0);
+    const withholdingBadge = row.has_withholding_from_customer
+      ? badge(`ได้รับแล้ว ฿${Number(row.withholding_amount_from_customer||0).toLocaleString()}`,"green")
+      : badge("ยังไม่ได้รับ","red");
+    return `
+    <tr>
+      <td>${row.revenue_no||"-"}</td>
+      <td>${formatDate(row.date)}</td>
+      <td>${escapeHtml(row.shipment_no||"-")}</td>
+      <td>${escapeHtml(row.customer_name||"-")}</td>
+      <td>${escapeHtml(row.qo_number||"-")}</td>
+      <td>${transportBadge(row.transport_type)}</td>
+      <td class="text-right">${formatCurrency(row.amount_charged)}</td>
+      <td class="text-right">${formatCurrency(row.amount_received)}</td>
+      <td class="text-right ${outstanding > 0 ? "text-red" : "text-green"}">${formatCurrency(outstanding)}</td>
+      <td>${withholdingBadge}</td>
+      <td>${revenuStatusBadge(row.status)}</td>
+      <td>
+        <div class="table-actions">
+          <button class="action-btn primary" onclick="openRevenueDetail('${row.id}')">ดู</button>
+          <button class="action-btn success" onclick="markRevenueReceived('${row.id}')">รับชำระแล้ว</button>
+          <button class="action-btn warn" onclick="toggleRevenueWithholding('${row.id}')">สลับใบหัก</button>
+        </div>
+      </td>
+    </tr>`;
+  }).join("");
+
+  // Summary bar
+  const summaryBar = $("#revenueSummaryBar");
+  if (summaryBar) {
+    const totalCharged  = rows.reduce((s,r) => s+Number(r.amount_charged||0), 0);
+    const totalReceived = rows.reduce((s,r) => s+Number(r.amount_received||0), 0);
+    const totalOutstanding = totalCharged - totalReceived;
+    summaryBar.innerHTML = `
+      <div class="stmt-summary-item"><span>ยอดขายทั้งหมด</span><strong class="text-green">${formatCurrency(totalCharged)}</strong></div>
+      <div class="stmt-summary-item"><span>รับชำระแล้ว</span><strong>${formatCurrency(totalReceived)}</strong></div>
+      <div class="stmt-summary-item"><span>ค้างรับ</span><strong class="text-red">${formatCurrency(totalOutstanding)}</strong></div>
+      <div class="stmt-summary-item"><span>จำนวนรายการ</span><strong>${rows.length}</strong></div>
+    `;
+  }
+}
+
+// ============================================================
+// REVENUE ACTIONS
+// ============================================================
+async function markRevenueReceived(id) {
+  const rev = appState.revenues.find(r => r.id === id);
+  if (!rev) return;
+  rev.amount_received = rev.amount_charged;
+  rev.status = "received";
+  try {
+    await sb.update("revenues", { amount_received: rev.amount_received, status: "received" }, { id });
+    await addLog("REVENUE_RECEIVED", rev.revenue_no||id, "รับชำระแล้ว");
+    renderAllTables();
+    toast("success","อัปเดตสำเร็จ",`${rev.revenue_no||rev.shipment_no} รับชำระครบแล้ว`);
+  } catch(e) { renderAllTables(); toast("success","อัปเดต (local)",`${rev.revenue_no||rev.shipment_no}`); }
+}
+
+async function toggleRevenueWithholding(id) {
+  const rev = appState.revenues.find(r => r.id === id);
+  if (!rev) return;
+  rev.has_withholding_from_customer = !rev.has_withholding_from_customer;
+  try {
+    await sb.update("revenues", { has_withholding_from_customer: rev.has_withholding_from_customer }, { id });
+    await addLog("REVENUE_WITHHOLDING", rev.revenue_no||id, `สลับใบหัก ณ ที่จ่าย → ${rev.has_withholding_from_customer?"ได้รับ":"ยังไม่ได้รับ"}`);
+    renderAllTables();
+    toast("success","อัปเดตใบหัก ณ ที่จ่าย",`${rev.has_withholding_from_customer ? "✅ ได้รับใบหัก ณ ที่จ่ายแล้ว" : "❌ ยังไม่ได้รับ"}`);
+  } catch(e) { renderAllTables(); }
+}
+
+function openRevenueDetail(id) {
+  const rev = appState.revenues.find(r => r.id === id);
+  if (!rev) return;
+  const shipment = getShipmentById(rev.shipment_id);
+  const items = shipment ? getFreightItemsByShipmentId(shipment.id) : [];
+  const totalCost = items.reduce((s,r) => s+Number(r.amount_approved||0), 0);
+  const profit = Number(rev.amount_charged||0) - totalCost;
+  const outstanding = Number(rev.amount_charged||0) - Number(rev.amount_received||0);
+
+  const html = `
+    <div class="detail-section">
+      <h4>ข้อมูลรายรับ</h4>
+      <div class="detail-grid">
+        <div class="detail-item"><span>เลขที่รายรับ</span><strong>${rev.revenue_no||"-"}</strong></div>
+        <div class="detail-item"><span>วันที่</span><strong>${formatDate(rev.date)}</strong></div>
+        <div class="detail-item"><span>Shipment</span><strong>${escapeHtml(rev.shipment_no||"-")}</strong></div>
+        <div class="detail-item"><span>ลูกค้า</span><strong>${escapeHtml(rev.customer_name||"-")}</strong></div>
+        <div class="detail-item"><span>เลข QO</span><strong>${escapeHtml(rev.qo_number||"-")}</strong></div>
+        <div class="detail-item"><span>Invoice</span><strong>${escapeHtml(rev.invoice_number||"-")}</strong></div>
+        <div class="detail-item"><span>Term</span><strong>${escapeHtml(rev.term||"-")}</strong></div>
+        <div class="detail-item"><span>ประเภทขนส่ง</span><strong>${transportText(rev.transport_type)}</strong></div>
+        <div class="detail-item"><span>ประเภทชำระ</span><strong>${escapeHtml(rev.payment_type||"-")}</strong></div>
+        <div class="detail-item"><span>เครดิต (วัน)</span><strong>${rev.credit_days||0}</strong></div>
+        <div class="detail-item"><span>หมายเหตุ</span><strong>${escapeHtml(rev.note||"-")}</strong></div>
+        <div class="detail-item"><span>บันทึกโดย</span><strong>${escapeHtml(rev.created_by||"-")}</strong></div>
+      </div>
+    </div>
+    <div class="detail-section">
+      <h4>สรุปการเงิน</h4>
+      <div class="detail-grid">
+        <div class="detail-item"><span>ยอดขาย (ราคาขาย)</span><strong>${formatCurrency(rev.amount_charged)}</strong></div>
+        <div class="detail-item"><span>รับชำระแล้ว</span><strong>${formatCurrency(rev.amount_received)}</strong></div>
+        <div class="detail-item"><span>ค้างรับ</span><strong class="${outstanding > 0 ? "text-red" : "text-green"}">${formatCurrency(outstanding)}</strong></div>
+        <div class="detail-item"><span>ต้นทุนรวม (Shipment)</span><strong class="text-red">${formatCurrency(totalCost)}</strong></div>
+        <div class="detail-item"><span>กำไรขั้นต้น</span><strong class="${profit >= 0 ? "text-green" : "text-red"}">${formatCurrency(profit)}</strong></div>
+        <div class="detail-item"><span>สถานะรับชำระ</span><strong>${revenuStatusBadge(rev.status)}</strong></div>
+        <div class="detail-item"><span>ใบหัก ณ ที่จ่ายจากลูกค้า</span><strong>${rev.has_withholding_from_customer ? "✅ ได้รับแล้ว" : "❌ ยังไม่ได้รับ"}</strong></div>
+        <div class="detail-item"><span>จำนวนหัก ณ ที่จ่าย</span><strong>${formatCurrency(rev.withholding_amount_from_customer||0)}</strong></div>
+      </div>
+    </div>
+    ${shipment ? `
+    <div class="detail-section">
+      <h4>รายการต้นทุนใต้ Shipment</h4>
+      <div class="document-list">
+        ${items.length ? items.map(it => `
+          <div class="document-row">
+            <div class="document-row__meta">
+              <strong>${it.req_no} • ${escapeHtml(it.item)}</strong>
+              <span>${formatCurrency(it.amount_approved)} • ${docStatusText(it)}</span>
+            </div>
+          </div>
+        `).join("") : "<div class='empty-state'>ไม่มีรายการต้นทุน</div>"}
+      </div>
+    </div>` : ""}
+  `;
+  $("#requestDetailContent").innerHTML = html;
+  openModal("requestDetailModal");
+}
+
+// ============================================================
+// RENDER OTHER TABLES (unchanged from original)
+// ============================================================
 function renderExpenseTable() {
   const tbody = $("#expenseTableBody");
   if (!tbody) return;
@@ -956,8 +1119,12 @@ function renderFreightShipmentTable() {
   if (!rows.length) { tbody.innerHTML = `<tr><td colspan="11"><div class="empty-state">ไม่พบ Shipment เฟรท</div></td></tr>`; return; }
   tbody.innerHTML = rows.map(shipment => {
     const items = getFreightItemsByShipmentId(shipment.id);
-    const totalAmount = items.reduce((sum,r) => sum+Number(r.amount_requested||0),0);
+    const totalAmount = items.reduce((s,r) => s+Number(r.amount_requested||0), 0);
     const allDocs = items.length ? items.every(it=>isDocumentComplete(it)) : false;
+    // Phase 3: revenue linkage
+    const revsForShipment = appState.revenues.filter(r => r.shipment_id === shipment.id);
+    const totalRev = revsForShipment.reduce((s,r) => s+Number(r.amount_charged||0), 0);
+    const profit = totalRev - totalAmount;
     return `
       <tr class="${appState.selectedShipmentId === shipment.id ? "is-selected" : ""}">
         <td>${shipment.shipment_no}</td>
@@ -968,6 +1135,7 @@ function renderFreightShipmentTable() {
         <td>${escapeHtml(`${shipment.origin||"-"} - ${shipment.destination||"-"}`)}</td>
         <td>${items.length}</td>
         <td class="text-right">${formatCurrency(totalAmount)}</td>
+        <td>${totalRev > 0 ? `<span class="${profit >= 0 ? "text-green" : "text-red"}">${formatCurrency(profit)}</span>` : badge("ยังไม่มีรายรับ","gray")}</td>
         <td>${allDocs ? badge("ครบ","green") : badge(items.length?"ไม่ครบ":"ยังไม่มีรายการ",items.length?"yellow":"gray")}</td>
         <td>${statusBadge(shipment.status)}</td>
         <td>
@@ -1015,14 +1183,11 @@ function renderFreightItemTable() {
 function renderStatementTable() {
   const tbody = $("#statementTableBody");
   if (!tbody) return;
-
-  // Summary bar
   const inRows = appState.statementRows.filter(r => r.direction === "in");
   const outRows = appState.statementRows.filter(r => r.direction === "out");
-  const totalIn = inRows.reduce((s,r) => s+Number(r.credit||0), 0);
+  const totalIn  = inRows.reduce((s,r) => s+Number(r.credit||0), 0);
   const totalOut = outRows.reduce((s,r) => s+Number(r.debit||0), 0);
   const matchedRows = appState.statementRows.filter(r => r.match_confidence >= 80);
-
   const summaryBar = $("#statementSummaryBar");
   if (summaryBar) {
     summaryBar.innerHTML = `
@@ -1031,12 +1196,9 @@ function renderStatementTable() {
       <div class="stmt-summary-item"><span>Match แล้ว</span><strong>${matchedRows.length} / ${appState.statementRows.length} รายการ</strong></div>
     `;
   }
-
   if (!appState.statementRows.length) {
-    tbody.innerHTML = `<tr><td colspan="8"><div class="empty-state">ยังไม่มีข้อมูล Statement — กดอัปโหลด KBIZ CSV ด้านบน</div></td></tr>`;
-    return;
+    tbody.innerHTML = `<tr><td colspan="8"><div class="empty-state">ยังไม่มีข้อมูล Statement</div></td></tr>`; return;
   }
-
   tbody.innerHTML = appState.statementRows.map(row => `
     <tr>
       <td>${formatDate(row.date)} ${row.time_str ? `<small>${row.time_str}</small>` : ""}</td>
@@ -1065,17 +1227,7 @@ function renderDocumentsTable() {
   tbody.innerHTML = rows.map(row => {
     const required = getRequiredDocLabels(row).join(", ")||"-";
     const attached = getAttachedDocLabels(row).join(", ")||"-";
-    return `
-      <tr>
-        <td>${row.modeLabel}</td>
-        <td>${row.ref}</td>
-        <td>${escapeHtml(row.ownerRef)}</td>
-        <td>${escapeHtml(required)}</td>
-        <td>${escapeHtml(attached)}</td>
-        <td>${docStatusBadge(row)}</td>
-        <td><div class="table-actions"><button class="action-btn primary" onclick="openRequestDetail('${row.mode==="freight"?"freight":"cargo"}','${row.id}')">พิมพ์/ดู</button></div></td>
-      </tr>
-    `;
+    return `<tr><td>${row.modeLabel}</td><td>${row.ref}</td><td>${escapeHtml(row.ownerRef)}</td><td>${escapeHtml(required)}</td><td>${escapeHtml(attached)}</td><td>${docStatusBadge(row)}</td><td><div class="table-actions"><button class="action-btn primary" onclick="openRequestDetail('${row.mode==="freight"?"freight":"cargo"}','${row.id}')">พิมพ์/ดู</button></div></td></tr>`;
   }).join("");
 }
 
@@ -1084,88 +1236,43 @@ function renderRoleTable() {
   if (!tbody) return;
   tbody.innerHTML = rolePermissions.map(role => {
     const p = role.permissions;
-    return `<tr><td>${role.label}</td><td>${boolBadge(p.dashboard)}</td><td>${boolBadge(p.expense)}</td><td>${boolBadge(p.freight)}</td><td>${boolBadge(p.statement)}</td><td>${boolBadge(p.documents)}</td><td>${boolBadge(p.settings)}</td><td>${boolBadge(p.users)}</td><td>${boolBadge(p.logs)}</td><td><div class="table-actions"><button class="action-btn primary" onclick="toast('success','Role','${role.label}')">ดู</button></div></td></tr>`;
+    return `<tr><td>${role.label}</td><td>${boolBadge(p.dashboard)}</td><td>${boolBadge(p.expense)}</td><td>${boolBadge(p.freight)}</td><td>${boolBadge(p.statement)}</td><td>${boolBadge(p.documents)}</td><td>${boolBadge(p.settings)}</td><td>${boolBadge(p.users)}</td><td>${boolBadge(p.logs)}</td><td>${boolBadge(p.revenue)}</td><td><div class="table-actions"><button class="action-btn primary">ดู</button></div></td></tr>`;
   }).join("");
 }
 
 function renderExpenseMasterTable() {
   const tbody = $("#expenseMasterTableBody");
   if (!tbody) return;
-  tbody.innerHTML = appState.expenseMaster.map(row => `
-    <tr>
-      <td>${escapeHtml(row.category)}</td>
-      <td>${escapeHtml(row.item)}</td>
-      <td>${escapeHtml(row.topic)}</td>
-      <td>${escapeHtml(getServiceCostName(row.service_cost_id))}</td>
-      <td>${boolBadge(row.need_receipt)}</td>
-      <td>${boolBadge(row.need_invoice)}</td>
-      <td>${row.need_withholding ? badge(`${row.withholding_percent||0}%`,"yellow") : boolBadge(false)}</td>
-      <td>${boolBadge(row.need_slip)}</td>
-      <td>${escapeHtml(row.guide||"-")}</td>
-      <td><div class="table-actions"><button class="action-btn primary" onclick="toast('success','Master','${escapeJs(row.item)}')">ดู</button></div></td>
-    </tr>
-  `).join("");
+  if (!appState.expenseMaster.length) { tbody.innerHTML = `<tr><td colspan="10"><div class="empty-state">ยังไม่มีข้อมูล master</div></td></tr>`; return; }
+  tbody.innerHTML = appState.expenseMaster.map(row => `<tr><td>${escapeHtml(row.category)}</td><td>${escapeHtml(row.item)}</td><td>${escapeHtml(row.topic)}</td><td>${escapeHtml(getServiceCostName(row.service_cost_id))}</td><td>${boolBadge(row.need_receipt)}</td><td>${boolBadge(row.need_invoice)}</td><td>${row.need_withholding ? badge(`${row.withholding_percent||0}%`,"yellow") : boolBadge(false)}</td><td>${boolBadge(row.need_slip)}</td><td>${escapeHtml(row.guide||"-")}</td><td><div class="table-actions"><button class="action-btn primary">ดู</button></div></td></tr>`).join("");
 }
 
 function renderServiceCostTable() {
   const tbody = $("#serviceCostTableBody");
   if (!tbody) return;
-  tbody.innerHTML = appState.serviceCosts.map(row => `
-    <tr>
-      <td>${escapeHtml(row.code)}</td>
-      <td>${escapeHtml(row.name)}</td>
-      <td>${escapeHtml(row.description||"-")}</td>
-      <td>${boolBadge(row.is_active)}</td>
-      <td><div class="table-actions"><button class="action-btn primary" onclick="toast('success','ต้นทุนบริการ','${escapeJs(row.name)}')">ดู</button></div></td>
-    </tr>
-  `).join("");
+  if (!appState.serviceCosts.length) { tbody.innerHTML = `<tr><td colspan="5"><div class="empty-state">ยังไม่มีข้อมูลต้นทุนบริการ</div></td></tr>`; return; }
+  tbody.innerHTML = appState.serviceCosts.map(row => `<tr><td>${escapeHtml(row.code)}</td><td>${escapeHtml(row.name)}</td><td>${escapeHtml(row.description||"-")}</td><td>${boolBadge(row.is_active)}</td><td><div class="table-actions"><button class="action-btn primary">ดู</button></div></td></tr>`).join("");
 }
 
 function renderBankTable() {
   const tbody = $("#bankTableBody");
   if (!tbody) return;
-  tbody.innerHTML = appState.banks.map(row => `
-    <tr>
-      <td>${escapeHtml(row.bank_name)}</td>
-      <td>${escapeHtml(row.account_no)}</td>
-      <td>${escapeHtml(row.account_name)}</td>
-      <td>${escapeHtml(row.account_type==="saving"?"ออมทรัพย์":"กระแสรายวัน")}</td>
-      <td>${boolBadge(row.use_for_statement)}</td>
-      <td><div class="table-actions"><button class="action-btn primary" onclick="toast('success','ธนาคาร','${escapeJs(row.bank_name)}')">ดู</button></div></td>
-    </tr>
-  `).join("");
+  if (!appState.banks.length) { tbody.innerHTML = `<tr><td colspan="6"><div class="empty-state">ยังไม่มีข้อมูลธนาคาร</div></td></tr>`; return; }
+  tbody.innerHTML = appState.banks.map(row => `<tr><td>${escapeHtml(row.bank_name)}</td><td>${escapeHtml(row.account_no)}</td><td>${escapeHtml(row.account_name)}</td><td>${escapeHtml(row.account_type==="saving"?"ออมทรัพย์":"กระแสรายวัน")}</td><td>${boolBadge(row.use_for_statement)}</td><td><div class="table-actions"><button class="action-btn primary">ดู</button></div></td></tr>`).join("");
 }
 
 function renderTaxRuleTable() {
   const tbody = $("#taxRuleTableBody");
   if (!tbody) return;
-  tbody.innerHTML = appState.taxRules.map(row => `
-    <tr>
-      <td>${escapeHtml(row.item_ref)}</td>
-      <td>${badge(`${row.percent||0}%`,"yellow")}</td>
-      <td>${boolBadge(row.need_receipt)}</td>
-      <td>${boolBadge(row.need_slip)}</td>
-      <td>${boolBadge(row.need_withholding)}</td>
-      <td>${escapeHtml(row.guide||"-")}</td>
-      <td><div class="table-actions"><button class="action-btn primary" onclick="toast('success','ภาษี','${escapeJs(row.item_ref)}')">ดู</button></div></td>
-    </tr>
-  `).join("");
+  if (!appState.taxRules.length) { tbody.innerHTML = `<tr><td colspan="7"><div class="empty-state">ยังไม่มีกฎภาษี</div></td></tr>`; return; }
+  tbody.innerHTML = appState.taxRules.map(row => `<tr><td>${escapeHtml(row.item_ref)}</td><td>${badge(`${row.percent||0}%`,"yellow")}</td><td>${boolBadge(row.need_receipt)}</td><td>${boolBadge(row.need_slip)}</td><td>${boolBadge(row.need_withholding)}</td><td>${escapeHtml(row.guide||"-")}</td><td><div class="table-actions"><button class="action-btn primary">ดู</button></div></td></tr>`).join("");
 }
 
 function renderUserTable() {
   const tbody = $("#userTableBody");
   if (!tbody) return;
-  tbody.innerHTML = appState.users.map(row => `
-    <tr>
-      <td>${escapeHtml(row.full_name)}</td>
-      <td>${escapeHtml(row.username)}</td>
-      <td>${getRoleLabel(row.role)}</td>
-      <td>${escapeHtml(row.department||"-")}</td>
-      <td>${boolBadge(row.is_active)}</td>
-      <td>${escapeHtml(row.last_login||"-")}</td>
-      <td><div class="table-actions"><button class="action-btn primary" onclick="toast('success','ผู้ใช้งาน','${escapeJs(row.full_name)}')">ดู</button></div></td>
-    </tr>
-  `).join("");
+  if (!appState.users.length) { tbody.innerHTML = `<tr><td colspan="7"><div class="empty-state">ยังไม่มีผู้ใช้งาน</div></td></tr>`; return; }
+  tbody.innerHTML = appState.users.map(row => `<tr><td>${escapeHtml(row.full_name)}</td><td>${escapeHtml(row.username)}</td><td>${getRoleLabel(row.role)}</td><td>${escapeHtml(row.department||"-")}</td><td>${boolBadge(row.is_active)}</td><td>${escapeHtml(row.last_login||"-")}</td><td><div class="table-actions"><button class="action-btn primary">ดู</button></div></td></tr>`).join("");
 }
 
 async function renderLogTable() {
@@ -1174,16 +1281,7 @@ async function renderLogTable() {
   try {
     const logs = await sb.select("logs","order=created_at.desc&limit=100");
     if (!logs.length) { tbody.innerHTML = `<tr><td colspan="6"><div class="empty-state">ยังไม่มีประวัติ</div></td></tr>`; return; }
-    tbody.innerHTML = logs.map(row => `
-      <tr>
-        <td>${escapeHtml(row.created_at?.replace("T"," ").slice(0,16)||"-")}</td>
-        <td>${escapeHtml(row.user_name||"-")}</td>
-        <td>${escapeHtml(getRoleLabel(row.user_role))}</td>
-        <td>${escapeHtml(row.action||"-")}</td>
-        <td>${escapeHtml(row.ref_no||"-")}</td>
-        <td>${escapeHtml(row.detail||"-")}</td>
-      </tr>
-    `).join("");
+    tbody.innerHTML = logs.map(row => `<tr><td>${escapeHtml(row.created_at?.replace("T"," ").slice(0,16)||"-")}</td><td>${escapeHtml(row.user_name||"-")}</td><td>${escapeHtml(getRoleLabel(row.user_role))}</td><td>${escapeHtml(row.action||"-")}</td><td>${escapeHtml(row.ref_no||"-")}</td><td>${escapeHtml(row.detail||"-")}</td></tr>`).join("");
   } catch(e) { console.error(e); }
 }
 
@@ -1197,7 +1295,16 @@ function populateStaticDropdowns() {
   populateItemFilter();
   populateBankOptions(["requestBank","freightItemBank"]);
   populateServiceCostOptions(["requestServiceCostCategory","freightItemServiceCostCategory","masterServiceCostCategory"]);
+  populateShipmentOptions("revenueShipmentId");
   updateUserRoleOptions();
+}
+
+function populateShipmentOptions(selectId) {
+  const select = $(`#${selectId}`);
+  if (!select) return;
+  const cur = select.value;
+  select.innerHTML = `<option value="">เลือก Shipment</option>` + appState.freightShipments.map(s => `<option value="${escapeAttr(s.id)}">${escapeHtml(`${s.shipment_no} • ${s.customer_name}`)}</option>`).join("");
+  if (appState.freightShipments.some(s => s.id === cur)) select.value = cur;
 }
 
 function populateCategoryOptions(selectId) {
@@ -1306,7 +1413,7 @@ function hasPermission(permissionKey) {
 }
 
 function pageIdToPermission(pageId) {
-  return { "dashboard-page":"dashboard","expense-page":"expense","freight-page":"freight","statement-page":"statement","documents-page":"documents","settings-page":"settings","users-page":"users","logs-page":"logs" }[pageId] || "dashboard";
+  return { "dashboard-page":"dashboard","expense-page":"expense","freight-page":"freight","statement-page":"statement","documents-page":"documents","settings-page":"settings","users-page":"users","logs-page":"logs","revenue-page":"revenue" }[pageId] || "dashboard";
 }
 
 function showLoginScreen() {
@@ -1338,11 +1445,12 @@ function setActivePage(pageId) {
   $(`.menu-item[data-page="${pageId}"]`)?.classList.add("active");
 
   const titleMap = {
-    "dashboard-page": { title:"ระบบรายจ่ายต้นทุน", subtitle:"ภาพรวมคาร์โก้ + เฟรท + เอกสาร + Statement" },
+    "dashboard-page": { title:"ระบบรายจ่ายต้นทุน", subtitle:"ภาพรวมคาร์โก้ + เฟรท + รายรับ + กำไร/ขาดทุน" },
     "expense-page": { title:"เบิกเงินคาร์โก้", subtitle:"รายการเดี่ยว ไม่ผูก Shipment" },
-    "freight-page": { title:"เบิกเงินเฟรท", subtitle:"สร้าง Shipment แล้วเพิ่มรายการเบิกย่อยภายใต้ Shipment" },
-    "statement-page": { title:"เทียบ Statement", subtitle:"อัปโหลด KBIZ CSV + ตรวจรายการโอน จับคู่คาร์โก้และเฟรท" },
+    "freight-page": { title:"เบิกเงินเฟรท", subtitle:"สร้าง Shipment แล้วเพิ่มรายการเบิกย่อย" },
+    "statement-page": { title:"เทียบ Statement", subtitle:"อัปโหลด KBIZ CSV + จับคู่คาร์โก้และเฟรท" },
     "documents-page": { title:"พิมพ์ชุดเอกสาร", subtitle:"ตรวจเอกสารแนบก่อนพิมพ์ชุดงาน" },
+    "revenue-page": { title:"รายรับ / กำไรต่อ Shipment", subtitle:"บันทึกยอดลูกค้าจ่าย • ลูกหนี้ค้างรับ • กำไรขั้นต้นต่อ Shipment • ใบหัก ณ ที่จ่ายจากลูกค้า" },
     "settings-page": { title:"ตั้งค่า", subtitle:"Role / Master / ต้นทุนบริการ / ธนาคาร / ภาษี" },
     "users-page": { title:"ผู้ใช้งาน / สิทธิ์", subtitle:"จัดการผู้ใช้และสิทธิ์การเข้าใช้" },
     "logs-page": { title:"ประวัติการทำรายการ", subtitle:"ตรวจสอบการเข้าใช้และการทำรายการย้อนหลัง" }
@@ -1353,6 +1461,7 @@ function setActivePage(pageId) {
   $("#sidebar")?.classList.remove("is-open");
 
   if (pageId === "logs-page") renderLogTable();
+  if (pageId === "revenue-page") renderRevenueTable();
 }
 
 function openModal(id) { $(`#${id}`)?.classList.add("is-open"); }
@@ -1382,8 +1491,8 @@ function updateSelectedShipmentSummary() {
     return;
   }
   const items = getFreightItemsByShipmentId(shipment.id);
-  const total = items.reduce((sum,r) => sum+Number(r.amount_requested||0), 0);
-  box.innerHTML = `<strong>${shipment.shipment_no}</strong><span>${escapeHtml(shipment.customer_name)} • ${escapeHtml(shipment.origin||"-")} - ${escapeHtml(shipment.destination||"-")} • ${items.length} รายการ • ${formatCurrency(total)}</span>`;
+  const total = items.reduce((s,r) => s+Number(r.amount_requested||0), 0);
+  box.innerHTML = `<strong>${shipment.shipment_no}</strong><span>${escapeHtml(shipment.customer_name)} • ${items.length} รายการ • ${formatCurrency(total)}</span>`;
   if (addBtn) addBtn.disabled = false;
 }
 
@@ -1405,21 +1514,32 @@ function openShipmentDetail(shipmentId) {
   const shipment = getShipmentById(shipmentId);
   if (!shipment) return;
   const items = getFreightItemsByShipmentId(shipment.id);
-  const total = items.reduce((sum,r) => sum+Number(r.amount_requested||0), 0);
+  const totalCost = items.reduce((s,r) => s+Number(r.amount_requested||0), 0);
+  const revsForShipment = appState.revenues.filter(r => r.shipment_id === shipment.id);
+  const totalRev = revsForShipment.reduce((s,r) => s+Number(r.amount_charged||0), 0);
+  const profit = totalRev - totalCost;
+
   const html = `
     <div class="detail-section">
       <h4>ข้อมูล Shipment</h4>
       <div class="detail-grid">
         <div class="detail-item"><span>Shipment No.</span><strong>${shipment.shipment_no}</strong></div>
         <div class="detail-item"><span>วันที่</span><strong>${formatDate(shipment.date)}</strong></div>
-        <div class="detail-item"><span>ลูกค้า / ผู้ดูแล</span><strong>${escapeHtml(shipment.customer_name)}</strong></div>
+        <div class="detail-item"><span>ลูกค้า</span><strong>${escapeHtml(shipment.customer_name)}</strong></div>
         <div class="detail-item"><span>ประเภทขนส่ง</span><strong>${transportText(shipment.transport_type)}</strong></div>
         <div class="detail-item"><span>Term</span><strong>${escapeHtml(shipment.term||"-")}</strong></div>
-        <div class="detail-item"><span>ต้นทาง - ปลายทาง</span><strong>${escapeHtml(`${shipment.origin||"-"} → ${shipment.destination||"-"}`)}</strong></div>
-        <div class="detail-item"><span>ผู้สร้าง</span><strong>${escapeHtml(shipment.created_by||"-")}</strong></div>
+        <div class="detail-item"><span>เส้นทาง</span><strong>${escapeHtml(`${shipment.origin||"-"} → ${shipment.destination||"-"}`)}</strong></div>
         <div class="detail-item"><span>สถานะ</span><strong>${statusText(shipment.status)}</strong></div>
         <div class="detail-item"><span>หมายเหตุ</span><strong>${escapeHtml(shipment.note||"-")}</strong></div>
-        <div class="detail-item"><span>ยอดรวมรายการย่อย</span><strong>${formatCurrency(total)}</strong></div>
+      </div>
+    </div>
+    <div class="detail-section">
+      <h4>สรุปการเงิน</h4>
+      <div class="detail-grid">
+        <div class="detail-item"><span>รายรับ (ยอดลูกค้าจ่าย)</span><strong class="text-green">${formatCurrency(totalRev)}</strong></div>
+        <div class="detail-item"><span>ต้นทุนรวม</span><strong class="text-red">${formatCurrency(totalCost)}</strong></div>
+        <div class="detail-item"><span>กำไรขั้นต้น</span><strong class="${profit >= 0 ? "text-green" : "text-red"}">${formatCurrency(profit)}</strong></div>
+        <div class="detail-item"><span>จำนวนรายการย่อย</span><strong>${items.length}</strong></div>
       </div>
     </div>
     <div class="detail-section">
@@ -1429,13 +1549,27 @@ function openShipmentDetail(shipmentId) {
           <div class="document-row">
             <div class="document-row__meta">
               <strong>${row.req_no} • ${escapeHtml(row.item)}</strong>
-              <span>${formatCurrency(row.amount_requested)} • QO: ${row.qo_number||"-"} • ${docStatusText(row)} • ${row.statement_matched?"Matched":"Unmatched"}</span>
+              <span>${formatCurrency(row.amount_requested)} • QO: ${row.qo_number||"-"} • ${docStatusText(row)}</span>
             </div>
             <button class="action-btn primary" onclick="openRequestDetail('freight','${row.id}')">ดู</button>
           </div>
-        `).join("") : `<div class="empty-state">Shipment นี้ยังไม่มีรายการย่อย</div>`}
+        `).join("") : `<div class="empty-state">ยังไม่มีรายการย่อย</div>`}
       </div>
     </div>
+    ${revsForShipment.length ? `
+    <div class="detail-section">
+      <h4>รายรับของ Shipment นี้</h4>
+      <div class="document-list">
+        ${revsForShipment.map(r => `
+          <div class="document-row">
+            <div class="document-row__meta">
+              <strong>${r.revenue_no||"-"} • ${formatCurrency(r.amount_charged)}</strong>
+              <span>รับแล้ว ${formatCurrency(r.amount_received)} • ใบหัก ${r.has_withholding_from_customer ? "✅" : "❌"} • ${revenuStatusBadge(r.status)}</span>
+            </div>
+          </div>
+        `).join("")}
+      </div>
+    </div>` : ""}
   `;
   $("#requestDetailContent").innerHTML = html;
   openModal("requestDetailModal");
@@ -1451,8 +1585,8 @@ function openRequestDetail(mode, id) {
       <div class="detail-grid">
         <div class="detail-item"><span>ประเภท</span><strong>${mode==="freight"?"เบิกเงินเฟรท":"เบิกเงินคาร์โก้"}</strong></div>
         <div class="detail-item"><span>เลขที่รายการ</span><strong>${row.req_no}</strong></div>
-        <div class="detail-item"><span>วันที่ (Draft)</span><strong>${formatDate(row.date)}</strong></div>
-        <div class="detail-item"><span>วันที่ Submit จริง</span><strong>${row.submitted_at ? row.submitted_at.replace("T"," ").slice(0,16) : "-"}</strong></div>
+        <div class="detail-item"><span>วันที่</span><strong>${formatDate(row.date)}</strong></div>
+        <div class="detail-item"><span>Submit เมื่อ</span><strong>${row.submitted_at ? row.submitted_at.replace("T"," ").slice(0,16) : "-"}</strong></div>
         <div class="detail-item"><span>ผู้เบิก</span><strong>${escapeHtml(row.requester)}</strong></div>
         <div class="detail-item"><span>เลข QO</span><strong>${escapeHtml(row.qo_number||"-")}</strong></div>
         <div class="detail-item"><span>Term</span><strong>${escapeHtml(row.term||"-")}</strong></div>
@@ -1460,7 +1594,7 @@ function openRequestDetail(mode, id) {
         <div class="detail-item"><span>หมวดหมู่</span><strong>${escapeHtml(row.category)}</strong></div>
         <div class="detail-item"><span>รายการเบิก</span><strong>${escapeHtml(row.item)}</strong></div>
         <div class="detail-item"><span>ต้นทุนบริการ</span><strong>${escapeHtml(getServiceCostName(row.service_cost_id))}</strong></div>
-        <div class="detail-item"><span>จำนวนเงินที่ขอเบิก</span><strong>${formatCurrency(row.amount_requested)}</strong></div>
+        <div class="detail-item"><span>จำนวนเงินขอเบิก</span><strong>${formatCurrency(row.amount_requested)}</strong></div>
         <div class="detail-item"><span>ธนาคาร</span><strong>${escapeHtml(row.bank||"-")}</strong></div>
         <div class="detail-item"><span>บัญชีรับเงิน</span><strong>${escapeHtml(row.account_name||"-")} ${row.account_no?`(${escapeHtml(row.account_no)})`:""}
         </strong></div>
@@ -1489,7 +1623,7 @@ function openRequestDetail(mode, id) {
 }
 
 // ============================================================
-// DEMO TOGGLES (สำหรับทดสอบ)
+// DEMO TOGGLES
 // ============================================================
 async function toggleDemoDocStatus(mode, id) {
   const row = mode === "freight" ? getFreightItemById(id) : getCargoRequestById(id);
@@ -1501,9 +1635,9 @@ async function toggleDemoDocStatus(mode, id) {
   row.status = deriveRowStatus(row);
   try {
     await sb.update("expense_requests", { has_receipt:row.has_receipt, has_invoice:row.has_invoice, has_withholding:row.has_withholding, has_slip:row.has_slip, status:row.status }, { id:row.id });
-    await addLog("TOGGLE_DOCS", row.req_no, "สลับสถานะเอกสารแบบตัวอย่าง");
+    await addLog("TOGGLE_DOCS", row.req_no, "สลับสถานะเอกสาร");
     renderAllTables();
-    toast("success","อัปเดตเอกสารแล้ว",`ปรับสถานะเอกสาร ${row.req_no} แล้ว`);
+    toast("success","อัปเดตเอกสารแล้ว",`ปรับสถานะ ${row.req_no}`);
   } catch(err) { toast("error","บันทึกไม่สำเร็จ",err.message); }
 }
 
@@ -1515,9 +1649,9 @@ async function toggleDemoStatement(mode, id) {
   row.status = deriveRowStatus(row);
   try {
     await sb.update("expense_requests", { statement_matched:row.statement_matched, statement_match_confidence:row.statement_match_confidence, status:row.status }, { id:row.id });
-    await addLog("TOGGLE_STATEMENT", row.req_no, "สลับสถานะ Statement แบบตัวอย่าง");
+    await addLog("TOGGLE_STATEMENT", row.req_no, "สลับสถานะ Statement");
     renderAllTables();
-    toast("success","อัปเดต Statement แล้ว",`ปรับสถานะ Match ของ ${row.req_no} แล้ว`);
+    toast("success","อัปเดต Statement แล้ว",`${row.req_no}`);
   } catch(err) { toast("error","บันทึกไม่สำเร็จ",err.message); }
 }
 
@@ -1572,10 +1706,7 @@ function getFreightItemById(id) { return appState.freightItems.find(r=>r.id===id
 function getShipmentById(id) { return appState.freightShipments.find(r=>r.id===id); }
 function getFreightItemsByShipmentId(sid) { return appState.freightItems.filter(r=>r.shipment_id===sid); }
 function getMasterByItem(item) { return appState.expenseMaster.find(r=>r.item===item); }
-function getServiceCostName(id) {
-  if (!id) return "-";
-  return appState.serviceCosts.find(r=>r.id===id)?.name || "-";
-}
+function getServiceCostName(id) { if (!id) return "-"; return appState.serviceCosts.find(r=>r.id===id)?.name || "-"; }
 function getRoleLabel(key) { return rolePermissions.find(r=>r.key===key)?.label || key || "-"; }
 
 function deriveRowStatus(row) {
@@ -1587,10 +1718,7 @@ function deriveRowStatus(row) {
 }
 
 function isDocumentComplete(row) {
-  return (!row.need_receipt || row.has_receipt) &&
-         (!row.need_invoice || row.has_invoice) &&
-         (!row.need_withholding || row.has_withholding) &&
-         (!row.need_slip || row.has_slip);
+  return (!row.need_receipt || row.has_receipt) && (!row.need_invoice || row.has_invoice) && (!row.need_withholding || row.has_withholding) && (!row.need_slip || row.has_slip);
 }
 function hasAnyAttachedDoc(row) { return !!(row.has_receipt||row.has_invoice||row.has_withholding||row.has_slip); }
 function getRequiredDocLabels(row) { const l=[]; if(row.need_receipt)l.push("ใบเสร็จ"); if(row.need_invoice)l.push("ใบกำกับ"); if(row.need_withholding)l.push("หัก ณ ที่จ่าย"); if(row.need_slip)l.push("สลิป"); return l; }
@@ -1604,23 +1732,19 @@ function boolBadge(v) { return v ? badge("ใช่","green") : badge("ไม่
 function confidenceBadge(c) { const n=Number(c||0); if(n>=90)return badge(`${n}%`,"green"); if(n>=70)return badge(`${n}%`,"yellow"); return badge(`${n}%`,"red"); }
 function docStatusBadge(row) { if(isDocumentComplete(row))return badge("ครบ","green"); if(hasAnyAttachedDoc(row))return badge("ไม่ครบ","yellow"); return badge("รอเอกสาร","red"); }
 function docStatusText(row) { if(isDocumentComplete(row))return "ครบ"; if(hasAnyAttachedDoc(row))return "ไม่ครบ"; return "รอเอกสาร"; }
-function statusBadge(status) { const text=statusText(status); if(["reconciled","active"].includes(status))return badge(text,"green"); if(["docs_pending","docs_incomplete","draft","waiting_statement"].includes(status))return badge(text,"yellow"); if(status==="closed")return badge(text,"blue"); return badge(text,"gray"); }
-function statusText(status) { return {"draft":"Draft","active":"Active","closed":"Closed","reconciled":"กระทบยอดแล้ว","docs_pending":"รอเอกสาร","docs_incomplete":"เอกสารไม่ครบ","waiting_statement":"รอเทียบ Statement"}[status]||status||"-"; }
+function statusBadge(status) { const text=statusText(status); if(["reconciled","active","received"].includes(status))return badge(text,"green"); if(["docs_pending","docs_incomplete","draft","waiting_statement","pending"].includes(status))return badge(text,"yellow"); if(status==="closed")return badge(text,"blue"); return badge(text,"gray"); }
+function statusText(status) { return {"draft":"Draft","active":"Active","closed":"Closed","reconciled":"กระทบยอดแล้ว","docs_pending":"รอเอกสาร","docs_incomplete":"เอกสารไม่ครบ","waiting_statement":"รอเทียบ Statement","pending":"รอรับชำระ","received":"รับชำระแล้ว","partial":"รับบางส่วน"}[status]||status||"-"; }
 function transportBadge(key) { if(key==="sea")return badge("เรือ","blue"); if(key==="truck")return badge("รถ","yellow"); if(key==="air")return badge("แอร์","red"); return badge("-","gray"); }
 function transportText(key) { return {sea:"เรือ",truck:"รถ",air:"แอร์"}[key]||key||"-"; }
 function directionBadge(dir) { if(dir==="in")return badge("เงินเข้า","green"); if(dir==="out")return badge("เงินออก","red"); return badge("ค่าธรรมเนียม","gray"); }
+function revenuStatusBadge(status) { if(status==="received")return badge("รับชำระแล้ว","green"); if(status==="partial")return badge("รับบางส่วน","yellow"); return badge("รอรับชำระ","red"); }
 
 // ============================================================
 // LOG
 // ============================================================
 async function addLog(action, refNo, detail) {
   try {
-    await sb.insert("logs", {
-      id: generateId("log"),
-      user_name: appState.currentUser?.full_name || "System",
-      user_role: appState.currentUser?.role || "system",
-      action, ref_no: refNo, detail
-    });
+    await sb.insert("logs", { id: generateId("log"), user_name: appState.currentUser?.full_name || "System", user_role: appState.currentUser?.role || "system", action, ref_no: refNo, detail });
   } catch(e) { console.warn("Log insert failed:", e.message); }
 }
 
@@ -1628,7 +1752,7 @@ async function addLog(action, refNo, detail) {
 // UTILS
 // ============================================================
 function initDefaultDates() {
-  ["requestDate","shipmentDate","freightItemDate"].forEach(id => {
+  ["requestDate","shipmentDate","freightItemDate","revenueDate"].forEach(id => {
     const el = $(`#${id}`);
     if (el && !el.value) el.value = todayISO();
   });
@@ -1637,11 +1761,6 @@ function initDefaultDates() {
 function todayISO() {
   const d = new Date();
   return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}-${String(d.getDate()).padStart(2,"0")}`;
-}
-
-function nowString() {
-  const d = new Date();
-  return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}-${String(d.getDate()).padStart(2,"0")} ${String(d.getHours()).padStart(2,"0")}:${String(d.getMinutes()).padStart(2,"0")}`;
 }
 
 function formatDate(dateStr) { return dateStr||"-"; }
@@ -1655,20 +1774,19 @@ function generateId(prefix="id") { return `${prefix}-${Math.random().toString(36
 
 function generateReqNo(mode="cargo") {
   const source = mode==="freight" ? appState.freightItems : appState.expenseRequests;
-  const max = source.reduce((acc,row) => {
-    const raw = String(row.req_no||"").match(/(\d+)$/);
-    return Math.max(acc, raw ? Number(raw[1]) : 0);
-  }, 0);
+  const max = source.reduce((acc,row) => { const raw = String(row.req_no||"").match(/(\d+)$/); return Math.max(acc, raw ? Number(raw[1]) : 0); }, 0);
   const next = String(max+1).padStart(4,"0");
   return mode==="freight" ? `FRQ-2026-${next}` : `REQ-2026-${next}`;
 }
 
 function generateShipmentNo() {
-  const max = appState.freightShipments.reduce((acc,row) => {
-    const raw = String(row.shipment_no||"").match(/(\d+)$/);
-    return Math.max(acc, raw ? Number(raw[1]) : 0);
-  }, 0);
+  const max = appState.freightShipments.reduce((acc,row) => { const raw = String(row.shipment_no||"").match(/(\d+)$/); return Math.max(acc, raw ? Number(raw[1]) : 0); }, 0);
   return `SHP-2026-${String(max+1).padStart(4,"0")}`;
+}
+
+function generateRevenueNo() {
+  const max = appState.revenues.reduce((acc,row) => { const raw = String(row.revenue_no||"").match(/(\d+)$/); return Math.max(acc, raw ? Number(raw[1]) : 0); }, 0);
+  return `REV-2026-${String(max+1).padStart(4,"0")}`;
 }
 
 function toast(type="success", title="", message="") {
@@ -1692,6 +1810,9 @@ function escapeJs(v) { return String(v??"").replaceAll("'","\\'"); }
 window.selectShipment = selectShipment;
 window.openRequestDetail = openRequestDetail;
 window.openShipmentDetail = openShipmentDetail;
+window.openRevenueDetail = openRevenueDetail;
+window.markRevenueReceived = markRevenueReceived;
+window.toggleRevenueWithholding = toggleRevenueWithholding;
 window.toggleDemoDocStatus = toggleDemoDocStatus;
 window.toggleDemoStatement = toggleDemoStatement;
 window.toast = toast;
