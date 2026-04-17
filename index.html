@@ -153,6 +153,9 @@
         </nav>
 
         <div class="sidebar-footer">
+          <button class="btn btn-secondary btn-full" style="margin-bottom:10px" onclick="window.showAppsScriptGuide && window.showAppsScriptGuide()">
+            📊 Google Sheets Sync
+          </button>
           <button class="btn btn-outline btn-full" id="logoutBtnSide">Logout</button>
         </div>
       </aside>
@@ -354,7 +357,7 @@
               <div class="filter-grid">
                 <label class="field">
                   <span>ค้นหา</span>
-                  <input type="text" id="expenseSearchInput" placeholder="ค้นหาเลขที่ / ผู้เบิก / หมวด / รายการ / หมายเหตุ" />
+                  <input type="text" id="expenseSearchInput" placeholder="ค้นหาเลขที่ / ผู้เบิก / หมวด / รายการ / ตู้ / หมายเหตุ" />
                 </label>
 
                 <label class="field">
@@ -368,6 +371,26 @@
                   <span>รายการเบิก</span>
                   <select id="expenseItemFilter">
                     <option value="">ทั้งหมด</option>
+                  </select>
+                </label>
+
+                <label class="field">
+                  <span>สถานะโอนเงิน</span>
+                  <select id="expenseTransferFilter">
+                    <option value="">ทั้งหมด</option>
+                    <option value="ต้องการเบิก">ต้องการเบิก</option>
+                    <option value="รอโอน">รอโอน</option>
+                    <option value="โอนแล้ว">โอนแล้ว</option>
+                    <option value="ไม่มีโอน">ไม่มีโอน</option>
+                  </select>
+                </label>
+
+                <label class="field">
+                  <span>แหล่งข้อมูล</span>
+                  <select id="expenseSourceFilter">
+                    <option value="">ทั้งหมด</option>
+                    <option value="web">Web UI</option>
+                    <option value="sheets">Google Sheets</option>
                   </select>
                 </label>
 
@@ -399,12 +422,14 @@
                     <th>เลขที่เบิก</th>
                     <th>วันที่</th>
                     <th>ผู้เบิก</th>
-                    <th>หมวดหมู่</th>
+                    <th>หมวดหมู่ / รายการ</th>
                     <th>รายการเบิก</th>
-                    <th>หัวข้อ</th>
-                    <th>ต้นทุนบริการ</th>
+                    <th>ตู้ / เที่ยวบิน</th>
                     <th>QO</th>
-                    <th class="text-right">จำนวนเงิน</th>
+                    <th class="text-right">ยอดเบิก / คืน</th>
+                    <th>สถานะโอน</th>
+                    <th>สถานะใบเสร็จ</th>
+                    <th>เลขใบหัก</th>
                     <th>เอกสาร</th>
                     <th>Statement</th>
                     <th>สถานะ</th>
@@ -524,9 +549,12 @@
                     <th>วันที่</th>
                     <th>หมวดหมู่</th>
                     <th>รายการเบิก</th>
-                    <th>หัวข้อ</th>
-                    <th>ต้นทุนบริการ</th>
-                    <th class="text-right">จำนวนเงิน</th>
+                    <th>ตู้ / เที่ยวบิน</th>
+                    <th>QO</th>
+                    <th class="text-right">ยอดเบิก / คืน</th>
+                    <th>สถานะโอน</th>
+                    <th>สถานะใบเสร็จ</th>
+                    <th>เลขใบหัก</th>
                     <th>เอกสาร</th>
                     <th>Statement</th>
                     <th>สถานะ</th>
@@ -914,11 +942,18 @@
             </label>
 
             <label class="field">
+              <span>เลขตู้ / เที่ยวบิน (Container / Flight No.)</span>
+              <input type="text" id="requestContainerFlightNo" placeholder="เช่น ZCSU7373222 หรือ TG670" />
+            </label>
+
+            <label class="field">
               <span>Term</span>
               <select id="requestTerm">
                 <option value="">เลือก Term</option>
                 <option value="CIF">CIF</option>
                 <option value="FOB">FOB</option>
+                <option value="EXW">EXW</option>
+                <option value="DDP">DDP</option>
               </select>
             </label>
 
@@ -961,6 +996,16 @@
             <label class="field">
               <span>จำนวนเงินที่ขอเบิก</span>
               <input type="number" id="requestAmountRequested" placeholder="0.00" min="0" step="0.01" />
+            </label>
+
+            <label class="field">
+              <span>จำนวนเงินยอดคืน (ถ้ามี)</span>
+              <input type="number" id="requestAmountRefund" placeholder="0.00 (ถ้าไม่มีให้เว้น)" min="0" step="0.01" />
+            </label>
+
+            <label class="field">
+              <span>เลขที่ใบหัก ณ ที่จ่าย</span>
+              <input type="text" id="requestWithholdingNo" placeholder="เช่น WT3-20260100004-5" />
             </label>
 
             <label class="field">
@@ -1136,11 +1181,18 @@
             </label>
 
             <label class="field">
+              <span>เลขตู้ / เที่ยวบิน (Container / Flight No.)</span>
+              <input type="text" id="freightItemContainerFlightNo" placeholder="เช่น ZCSU7373222 หรือ TG670" />
+            </label>
+
+            <label class="field">
               <span>Term (ดึงจาก Shipment)</span>
               <select id="freightItemTerm">
                 <option value="">เลือก Term</option>
                 <option value="CIF">CIF</option>
                 <option value="FOB">FOB</option>
+                <option value="EXW">EXW</option>
+                <option value="DDP">DDP</option>
               </select>
             </label>
 
@@ -1173,6 +1225,21 @@
             <label class="field">
               <span>จำนวนเงินที่ขอเบิก</span>
               <input type="number" id="freightItemAmountRequested" placeholder="0.00" min="0" step="0.01" />
+            </label>
+
+            <label class="field">
+              <span>จำนวนเงินยอดคืน (ถ้ามี)</span>
+              <input type="number" id="freightItemAmountRefund" placeholder="0.00 (ถ้าไม่มีให้เว้น)" min="0" step="0.01" />
+            </label>
+
+            <label class="field">
+              <span>เครดิต (วัน)</span>
+              <input type="number" id="freightItemCreditDays" placeholder="0 = จ่ายทันที" min="0" />
+            </label>
+
+            <label class="field">
+              <span>เลขที่ใบหัก ณ ที่จ่าย</span>
+              <input type="text" id="freightItemWithholdingNo" placeholder="เช่น WT3-20260100004-5" />
             </label>
 
             <label class="field">
