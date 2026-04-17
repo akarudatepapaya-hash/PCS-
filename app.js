@@ -2168,3 +2168,4 @@ window.showAppsScriptGuide = function() {
   $("#requestDetailContent").innerHTML = html;
   openModal("requestDetailModal");
 };
+""
